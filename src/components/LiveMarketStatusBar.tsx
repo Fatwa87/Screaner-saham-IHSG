@@ -81,18 +81,20 @@ export default function LiveMarketStatusBar() {
       {/* Top Banner Status Bar */}
       <View style={[styles.barContainer, status.connected ? styles.barConnected : styles.barDisconnected]}>
         <View style={styles.barLeft}>
-          <View style={[styles.dot, status.connected ? styles.dotGreen : styles.dotRed]} />
+          <View style={styles.dotWrapper}>
+            <View style={[styles.dotAura, status.connected ? styles.dotAuraGreen : styles.dotAuraRed]} />
+            <View style={[styles.dot, status.connected ? styles.dotGreen : styles.dotRed]} />
+          </View>
           <Text style={styles.barTitle}>
-            {status.connected ? 'LIVE MARKET DATA TERHUBUNG' : 'ANTI-BIAS: SERVER DATA OFFLINE'}
+            {status.connected ? 'LIVE MARKET DATA TERHUBUNG' : 'SERVER DATA BURSA OFFLINE'}
           </Text>
-          {status.connected && status.latency !== null && (
-            <Text style={styles.barSub}>
-              {status.latency}ms • {formatTime(status.lastUpdate)} WIB
-            </Text>
-          )}
-          {!status.connected && (
+          {status.connected && status.latency !== null ? (
+            <View style={styles.latencyBadge}>
+              <Text style={styles.latencyText}>⚡ {status.latency}ms • {formatTime(status.lastUpdate)} WIB</Text>
+            </View>
+          ) : (
             <Text style={styles.barSubAlert}>
-              Data palsu/lama dinonaktifkan
+              Klik Hubungkan untuk aktifkan data real-time
             </Text>
           )}
         </View>
@@ -103,7 +105,7 @@ export default function LiveMarketStatusBar() {
           activeOpacity={0.8}
         >
           <Text style={styles.btnActionText}>
-            {status.connected ? '⚙️ Server' : '🔌 Hubungkan'}
+            {status.connected ? '⚙️ Server Cloud' : '🔌 Hubungkan'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -242,64 +244,92 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     zIndex: 999,
   },
   barConnected: {
-    backgroundColor: '#052e16',
-    borderBottomColor: '#166534',
+    backgroundColor: '#0A1713',
+    borderBottomColor: 'rgba(16, 185, 129, 0.3)',
   },
   barDisconnected: {
-    backgroundColor: '#3b0764',
-    borderBottomColor: '#701a75',
+    backgroundColor: '#1C0E14',
+    borderBottomColor: 'rgba(244, 63, 94, 0.3)',
   },
   barLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
     flexWrap: 'wrap',
+    gap: 6,
+  },
+  dotWrapper: {
+    width: 14,
+    height: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 4,
+  },
+  dotAura: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+  },
+  dotAuraGreen: {
+    backgroundColor: 'rgba(16, 185, 129, 0.35)',
+  },
+  dotAuraRed: {
+    backgroundColor: 'rgba(244, 63, 94, 0.35)',
   },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
   },
   dotGreen: {
-    backgroundColor: '#22c55e',
+    backgroundColor: '#10B981',
   },
   dotRed: {
-    backgroundColor: '#f43f5e',
+    backgroundColor: '#F43F5E',
   },
   barTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#F8FAFC',
-    marginRight: 8,
-  },
-  barSub: {
     fontSize: 11,
-    color: '#86efac',
+    fontWeight: '800',
+    color: '#F8FAFC',
+    letterSpacing: 0.3,
+  },
+  latencyBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.25)',
+  },
+  latencyText: {
+    fontSize: 10,
+    color: '#34D399',
+    fontWeight: '700',
   },
   barSubAlert: {
-    fontSize: 11,
-    color: '#f472b6',
+    fontSize: 10,
+    color: '#FB7185',
     fontWeight: '600',
   },
   btnAction: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 7,
     marginLeft: 8,
   },
   btnActionGreen: {
-    backgroundColor: 'rgba(34, 197, 94, 0.2)',
+    backgroundColor: 'rgba(16, 185, 129, 0.18)',
     borderWidth: 1,
-    borderColor: '#22c55e',
+    borderColor: '#10B981',
   },
   btnActionRed: {
-    backgroundColor: '#e11d48',
+    backgroundColor: '#E11D48',
   },
   btnActionText: {
     fontSize: 11,

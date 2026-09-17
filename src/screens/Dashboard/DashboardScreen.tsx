@@ -1,12 +1,23 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
-import { COLORS, SIZES } from '../../constants/theme';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Platform } from 'react-native';
+import { COLORS, SIZES, SHADOWS } from '../../constants/theme';
 import { fetchQuotes, YFQuote } from '../../utils/yfinance';
 import { formatRupiah, formatPercent } from '../../utils/formatters';
 
 const WATCH_LEADERS = ['BBCA', 'BBRI', 'BMRI', 'BBNI', 'TLKM', 'ASII', 'GOTO', 'AMMN'];
 
-export default function DashboardScreen() {
+const LEADER_INFO: Record<string, { name: string; sector: string }> = {
+  BBCA: { name: 'Bank Central Asia', sector: 'Financials' },
+  BBRI: { name: 'Bank Rakyat Indonesia', sector: 'Financials' },
+  BMRI: { name: 'Bank Mandiri', sector: 'Financials' },
+  BBNI: { name: 'Bank Negara Indonesia', sector: 'Financials' },
+  TLKM: { name: 'Telkom Indonesia', sector: 'Infrastructure' },
+  ASII: { name: 'Astra International', sector: 'Conglomerate' },
+  GOTO: { name: 'GoTo Gojek Tokopedia', sector: 'Technology' },
+  AMMN: { name: 'Amman Mineral', sector: 'Basic Materials' },
+};
+
+export default function DashboardScreen({ navigation }: any) {
   const [macroData, setMacroData] = useState<{ ihsg?: YFQuote; usdidr?: YFQuote; snp?: YFQuote; gold?: YFQuote }>({});
   const [leadersData, setLeadersData] = useState<Record<string, YFQuote>>({});
   const [loading, setLoading] = useState(true);
@@ -28,9 +39,9 @@ export default function DashboardScreen() {
         if (allQuotes[t]) leaders[t] = allQuotes[t];
       });
       setLeadersData(leaders);
-      setLastUpdated(new Date().toLocaleTimeString('id-ID'));
+      setLastUpdated(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     } catch (e) {
-      console.error('Error loading dashboard data:', e);
+      console.error('[DashboardScreen] Error loading data:', e);
     }
     setLoading(false);
   };
@@ -39,30 +50,62 @@ export default function DashboardScreen() {
     loadData();
   }, []);
 
-  const renderMacroCard = (title: string, quote?: YFQuote, isCurrency = false, invertColor = false) => {
+  const renderMacroCard = (
+    title: string, 
+    icon: string, 
+    quote?: YFQuote, 
+    isCurrency = false, 
+    invertColor = false
+  ) => {
     const price = quote?.regularMarketPrice || 0;
     const chg = quote?.regularMarketChangePercent || 0;
     const isUp = chg >= 0;
     
-    // Invert for USD/IDR: Rupiah weakening is bearish (danger)
-    let color = isUp ? COLORS.success : COLORS.danger;
-    if (invertColor) color = isUp ? COLORS.danger : COLORS.success;
+    // Invert for USD/IDR: Rupiah weakening is bearish for IHSG
+    let isPositive = isUp;
+    if (invertColor) isPositive = !isUp;
+
+    const accentColor = isPositive ? COLORS.success : COLORS.danger;
+    const badgeBg = isPositive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)';
+    const badgeBorder = isPositive ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)';
+
+    // High/Low range visual ratio
+    const high = quote?.regularMarketDayHigh || price;
+    const low = quote?.regularMarketDayLow || price;
+    const rangeSpan = high - low;
+    const currentProgress = rangeSpan > 0 ? Math.min(Math.max((price - low) / rangeSpan, 0.05), 0.95) : 0.5;
 
     return (
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>{title}</Text>
-        <Text style={styles.cardPrice}>
-          {price > 0 ? (isCurrency ? formatRupiah(price) : price.toLocaleString('id-ID', { maximumFractionDigits: 2 })) : '—'}
-        </Text>
-        <View style={styles.cardFooter}>
-          <Text style={[styles.cardChg, { color }]}>
-            {isUp ? '▲' : '▼'} {formatPercent(chg)}
+      <View style={[styles.macroCardWrapper]}>
+        <View style={styles.macroCard}>
+          <View style={styles.macroHeader}>
+            <View style={styles.macroTitleGroup}>
+              <Text style={styles.macroIcon}>{icon}</Text>
+              <Text style={styles.macroTitle}>{title}</Text>
+            </View>
+            <View style={[styles.chgBadge, { backgroundColor: badgeBg, borderColor: badgeBorder }]}>
+              <Text style={[styles.chgBadgeText, { color: accentColor }]}>
+                {isUp ? '▲' : '▼'} {formatPercent(chg)}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.macroPrice}>
+            {price > 0 ? (isCurrency ? formatRupiah(price) : price.toLocaleString('id-ID', { maximumFractionDigits: 2 })) : '—'}
           </Text>
-          {quote?.regularMarketDayHigh ? (
-            <Text style={styles.cardRange}>
-              H: {Math.round(quote.regularMarketDayHigh)} L: {Math.round(quote.regularMarketDayLow)}
-            </Text>
-          ) : null}
+
+          {/* Range High-Low visual indicator */}
+          {high > low && (
+            <View style={styles.rangeContainer}>
+              <View style={styles.rangeTrack}>
+                <View style={[styles.rangeFill, { left: `${currentProgress * 100}%`, backgroundColor: accentColor }]} />
+              </View>
+              <View style={styles.rangeLabels}>
+                <Text style={styles.rangeText}>L: {Math.round(low).toLocaleString('id-ID')}</Text>
+                <Text style={styles.rangeText}>H: {Math.round(high).toLocaleString('id-ID')}</Text>
+              </View>
+            </View>
+          )}
         </View>
       </View>
     );
@@ -78,34 +121,49 @@ export default function DashboardScreen() {
       return {
         badge: '🚀 STRONG BULLISH',
         color: COLORS.success,
-        text: 'Kondisi Sempurna: Wall Street menguat dan Rupiah apresiasi. Momentum akumulasi & swing trade maksimal!',
+        bgGlow: 'rgba(16, 185, 129, 0.12)',
+        borderColor: 'rgba(16, 185, 129, 0.4)',
+        summary: 'Wall Street Menguat & Rupiah Menguat',
+        text: 'Sentimen global sangat kondusif. Aliran dana asing berpotensi masuk ke IHSG. Momentum optimal untuk swing trade & akumulasi saham leading.',
       };
     }
     if (snpUp && usdUp) {
       return {
         badge: '🟡 MIXED MOMENTUM',
         color: COLORS.warning,
-        text: 'Wall Street naik namun Rupiah melemah. IHSG cenderung selective dan rotasi sektor.',
+        bgGlow: 'rgba(245, 158, 11, 0.12)',
+        borderColor: 'rgba(245, 158, 11, 0.4)',
+        summary: 'Wall Street Hijau tapi Rupiah Melemah',
+        text: 'Pasar cenderung selektif. Fokus pada rotasi saham berbasis komoditas ekspor atau saham perbankan berfundamental kuat.',
       };
     }
     if (!snpUp && usdUp) {
       return {
         badge: '🔻 STRONG BEARISH',
         color: COLORS.danger,
-        text: 'Kondisi Bahaya: Tekanan global meningkat, Rupiah depresiasi. Disiplin cut loss & perbanyak cash!',
+        bgGlow: 'rgba(244, 63, 94, 0.12)',
+        borderColor: 'rgba(244, 63, 94, 0.4)',
+        summary: 'Global Tertekan & Rupiah Melemah',
+        text: 'Tekanan makro eksternal tinggi. Batasi posisi trading, amankan profit, disiplin stop loss ketat, dan perbanyak cash reserve.',
       };
     }
     if (ihsgPrice < ihsgMa50 && ihsgMa50 > 0) {
       return {
         badge: '⚠️ DOWNTREND ALERT',
         color: COLORS.warning,
-        text: 'IHSG berada di bawah MA50. Fokus pada scalping cepat atau tunggu rebound di area support.',
+        bgGlow: 'rgba(245, 158, 11, 0.12)',
+        borderColor: 'rgba(245, 158, 11, 0.4)',
+        summary: 'IHSG di Bawah Rata-Rata MA50',
+        text: 'IHSG berada dalam fase konsolidasi/koreksi teknikal. Disarankan scalping kilat atau buy on weakness di area support kuat.',
       };
     }
     return {
-      badge: '🟡 KONSOLIDASI',
-      color: COLORS.primary,
-      text: 'Pasar bergerak sideways. Tunggu konfirmasi volume breakout pada saham leading.',
+      badge: '⚖️ KONSOLIDASI',
+      color: '#38BDF8',
+      bgGlow: 'rgba(56, 189, 248, 0.12)',
+      borderColor: 'rgba(56, 189, 248, 0.4)',
+      summary: 'Pasar Bergerak Sideways',
+      text: 'Volatilitas pasar cenderung netral. Tunggu konfirmasi lonjakan volume transaksi pada breakout saham penggerak.',
     };
   };
 
@@ -114,62 +172,103 @@ export default function DashboardScreen() {
   return (
     <ScrollView 
       style={styles.container}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} tintColor={COLORS.primary} />}
+      contentContainerStyle={styles.contentContainer}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} tintColor={COLORS.cyan} />}
     >
-      <View style={styles.header}>
+      {/* Top Header Command Bar */}
+      <View style={styles.topBar}>
         <View>
-          <Text style={styles.title}>STOCK MASTER v3.6</Text>
-          <Text style={styles.subtitle}>Makro, IHSG & Market Dashboard</Text>
+          <Text style={styles.pageTitle}>Dashboard Pasar</Text>
+          <Text style={styles.pageSubtitle}>Pantauan Makro Global, IHSG & Big Caps</Text>
         </View>
-        <TouchableOpacity style={styles.refreshBtn} onPress={loadData}>
-          <Text style={styles.refreshText}>🔄 {lastUpdated || 'Refresh'}</Text>
+        <TouchableOpacity style={styles.refreshBtn} onPress={loadData} activeOpacity={0.8}>
+          <Text style={styles.refreshIcon}>🔄</Text>
+          <Text style={styles.refreshText}>{lastUpdated || 'Segarkan'}</Text>
         </TouchableOpacity>
       </View>
 
-      {/* 3-Pillar Macro Analysis Box */}
-      <View style={[styles.predictionBox, { borderColor: pred.color }]}>
-        <View style={styles.badgeContainer}>
-          <Text style={[styles.predictionBadge, { color: pred.color }]}>{pred.badge}</Text>
-          <Text style={styles.pilarTag}>Sistem 3 Pilar</Text>
+      {/* Hero 3-Pillar Macro Analysis Command Center */}
+      <View style={[styles.heroCard, { backgroundColor: pred.bgGlow, borderColor: pred.borderColor }]}>
+        <View style={styles.heroTop}>
+          <View style={styles.heroTagRow}>
+            <View style={[styles.statusBadge, { borderColor: pred.borderColor }]}>
+              <Text style={[styles.statusBadgeText, { color: pred.color }]}>{pred.badge}</Text>
+            </View>
+            <View style={styles.algoPill}>
+              <Text style={styles.algoPillText}>Sistem 3 Pilar Quant</Text>
+            </View>
+          </View>
+          <Text style={styles.heroSummary}>{pred.summary}</Text>
         </View>
-        <Text style={styles.predictionText}>{pred.text}</Text>
+        <Text style={styles.heroDescription}>{pred.text}</Text>
       </View>
 
-      {/* Macro Indicators Grid */}
+      {/* Macro Indicators 2x2 Grid */}
       <View style={styles.sectionHeader}>
+        <Text style={styles.sectionIcon}>📊</Text>
         <Text style={styles.sectionTitle}>Indikator Pasar Global & Valuta</Text>
       </View>
-      <View style={styles.grid}>
-        {renderMacroCard('IHSG (Composite)', macroData.ihsg)}
-        {renderMacroCard('USD / IDR', macroData.usdidr, true, true)}
-        {renderMacroCard('S&P 500', macroData.snp)}
-        {renderMacroCard('Emas (Gold)', macroData.gold)}
+      <View style={styles.macroGrid}>
+        {renderMacroCard('IHSG', '🇮🇩', macroData.ihsg)}
+        {renderMacroCard('USD / IDR', '💵', macroData.usdidr, true, true)}
+        {renderMacroCard('S&P 500', '🇺🇸', macroData.snp)}
+        {renderMacroCard('Emas', '🪙', macroData.gold)}
       </View>
 
-      {/* Market Leaders Section */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Saham Market Leaders (LQ45)</Text>
+      {/* Market Leaders LQ45 Section */}
+      <View style={[styles.sectionHeader, { marginTop: 12 }]}>
+        <Text style={styles.sectionIcon}>🏛️</Text>
+        <Text style={styles.sectionTitle}>Saham Market Leaders (LQ45 Penggerak)</Text>
       </View>
-      <View style={styles.leadersList}>
-        {WATCH_LEADERS.map(ticker => {
+      
+      <View style={styles.leadersCard}>
+        {WATCH_LEADERS.map((ticker, idx) => {
           const q = leadersData[ticker];
+          const info = LEADER_INFO[ticker] || { name: q?.shortName || ticker, sector: 'IDX' };
           const price = q?.regularMarketPrice || 0;
           const chg = q?.regularMarketChangePercent || 0;
           const isUp = chg >= 0;
 
           return (
-            <View key={ticker} style={styles.leaderRow}>
-              <View>
-                <Text style={styles.leaderTicker}>{ticker}</Text>
-                <Text style={styles.leaderName}>{q?.shortName || ticker}</Text>
+            <TouchableOpacity 
+              key={ticker} 
+              style={[styles.leaderRow, idx === WATCH_LEADERS.length - 1 && styles.leaderRowLast]}
+              activeOpacity={0.7}
+              onPress={() => {
+                if (navigation) {
+                  navigation.navigate('Analysis', { ticker });
+                }
+              }}
+            >
+              <View style={styles.leaderLeft}>
+                <View style={styles.rankBadge}>
+                  <Text style={styles.rankText}>#{idx + 1}</Text>
+                </View>
+                <View>
+                  <View style={styles.tickerRow}>
+                    <Text style={styles.leaderTicker}>{ticker}</Text>
+                    <View style={styles.sectorBadge}>
+                      <Text style={styles.sectorText}>{info.sector}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.leaderName} numberOfLines={1}>{info.name}</Text>
+                </View>
               </View>
+
               <View style={styles.leaderRight}>
-                <Text style={styles.leaderPrice}>{price > 0 ? formatRupiah(price) : '—'}</Text>
-                <Text style={[styles.leaderChg, { color: isUp ? COLORS.success : COLORS.danger }]}>
-                  {formatPercent(chg)}
+                <Text style={styles.leaderPrice}>
+                  {price > 0 ? formatRupiah(price) : '—'}
                 </Text>
+                <View style={[
+                  styles.leaderChgPill, 
+                  { backgroundColor: isUp ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)' }
+                ]}>
+                  <Text style={[styles.leaderChgText, { color: isUp ? COLORS.success : COLORS.danger }]}>
+                    {isUp ? '▲' : '▼'} {formatPercent(chg)}
+                  </Text>
+                </View>
               </View>
-            </View>
+            </TouchableOpacity>
           );
         })}
       </View>
@@ -182,150 +281,275 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  header: {
+  contentContainer: {
     padding: SIZES.padding,
-    backgroundColor: COLORS.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingBottom: 36,
+  },
+  topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 16,
   },
-  title: {
-    color: COLORS.primary,
-    fontSize: SIZES.font * 1.4,
-    fontWeight: '900',
-    letterSpacing: 0.5,
+  pageTitle: {
+    color: '#F8FAFC',
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
-  subtitle: {
+  pageSubtitle: {
     color: COLORS.textMuted,
-    fontSize: SIZES.font * 0.85,
+    fontSize: 12,
     marginTop: 2,
   },
   refreshBtn: {
-    backgroundColor: COLORS.surfaceLight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 7,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.borderGlass,
+    gap: 6,
+  },
+  refreshIcon: {
+    fontSize: 12,
   },
   refreshText: {
-    color: COLORS.textMuted,
-    fontSize: SIZES.font * 0.8,
+    color: '#38BDF8',
+    fontSize: 11,
+    fontWeight: '700',
   },
-  predictionBox: {
-    margin: SIZES.padding,
-    padding: SIZES.padding,
-    backgroundColor: COLORS.surface,
-    borderRadius: SIZES.radius,
+  heroCard: {
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1.5,
+    marginBottom: 20,
+    ...SHADOWS.card,
   },
-  badgeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  heroTop: {
     marginBottom: 8,
   },
-  predictionBadge: {
-    fontSize: SIZES.font * 1.15,
-    fontWeight: 'bold',
+  heroTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
   },
-  pilarTag: {
-    color: COLORS.textMuted,
-    fontSize: SIZES.font * 0.75,
-    backgroundColor: COLORS.surfaceLight,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
   },
-  predictionText: {
-    color: COLORS.text,
-    fontSize: SIZES.font * 0.95,
-    lineHeight: 22,
-  },
-  sectionHeader: {
-    paddingHorizontal: SIZES.padding,
-    paddingTop: SIZES.padding / 2,
-    paddingBottom: 8,
-  },
-  sectionTitle: {
-    color: COLORS.textMuted,
-    fontSize: SIZES.font * 0.9,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
     letterSpacing: 0.5,
   },
-  grid: {
+  algoPill: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  algoPillText: {
+    color: '#CBD5E1',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  heroSummary: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  heroDescription: {
+    color: '#94A3B8',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  sectionIcon: {
+    fontSize: 15,
+  },
+  sectionTitle: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  macroGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: SIZES.padding / 2,
+    marginHorizontal: -6,
+    marginBottom: 16,
   },
-  card: {
+  macroCardWrapper: {
     width: '50%',
-    padding: SIZES.padding / 2,
+    padding: 6,
   },
-  cardTitle: {
-    color: COLORS.textMuted,
-    fontSize: SIZES.font * 0.85,
-    marginBottom: 4,
+  macroCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.borderGlass,
+    minHeight: 112,
+    justifyContent: 'space-between',
+    ...SHADOWS.card,
   },
-  cardPrice: {
-    color: COLORS.text,
-    fontSize: SIZES.font * 1.3,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  cardFooter: {
+  macroHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  macroTitleGroup: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
   },
-  cardChg: {
-    fontSize: SIZES.font * 0.9,
-    fontWeight: 'bold',
+  macroIcon: {
+    fontSize: 14,
   },
-  cardRange: {
-    color: COLORS.textMuted,
-    fontSize: SIZES.font * 0.7,
+  macroTitle: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '700',
   },
-  leadersList: {
-    marginHorizontal: SIZES.padding,
-    marginBottom: SIZES.padding * 2,
-    backgroundColor: COLORS.surface,
-    borderRadius: SIZES.radius,
+  chgBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
     borderWidth: 1,
-    borderColor: COLORS.border,
+  },
+  chgBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  macroPrice: {
+    color: '#F8FAFC',
+    fontSize: 18,
+    fontWeight: '800',
+    marginVertical: 4,
+  },
+  rangeContainer: {
+    marginTop: 4,
+  },
+  rangeTrack: {
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 2,
+    position: 'relative',
+    overflow: 'visible',
+  },
+  rangeFill: {
+    position: 'absolute',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    top: -1,
+  },
+  rangeLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  rangeText: {
+    color: '#64748B',
+    fontSize: 9,
+    fontWeight: '600',
+  },
+  leadersCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.borderGlass,
     overflow: 'hidden',
+    ...SHADOWS.card,
   },
   leaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: SIZES.padding,
+    paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  leaderRowLast: {
+    borderBottomWidth: 0,
+  },
+  leaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  rankBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  rankText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  tickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   leaderTicker: {
-    color: COLORS.text,
-    fontSize: SIZES.font * 1.05,
-    fontWeight: 'bold',
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  sectorBadge: {
+    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  sectorText: {
+    color: '#38BDF8',
+    fontSize: 9,
+    fontWeight: '600',
   },
   leaderName: {
-    color: COLORS.textMuted,
-    fontSize: SIZES.font * 0.8,
+    color: '#64748B',
+    fontSize: 11,
     marginTop: 2,
+    maxWidth: 180,
   },
   leaderRight: {
     alignItems: 'flex-end',
   },
   leaderPrice: {
-    color: COLORS.text,
-    fontSize: SIZES.font * 1.05,
-    fontWeight: 'bold',
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '700',
   },
-  leaderChg: {
-    fontSize: SIZES.font * 0.85,
-    fontWeight: 'bold',
-    marginTop: 2,
+  leaderChgPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 5,
+    marginTop: 3,
+  },
+  leaderChgText: {
+    fontSize: 11,
+    fontWeight: '800',
   },
 });
