@@ -9,6 +9,12 @@ export const DEV_PORT = 3000;
 // Preset server options for quick switching
 export const SERVER_PRESETS = [
   {
+    id: 'vercel_cloud',
+    name: '▲ Vercel Cloud Backend',
+    url: 'https://screaner-saham-ihsg.vercel.app',
+    desc: 'Server cloud gratis Vercel online 24 jam',
+  },
+  {
     id: 'local_wifi',
     name: '💻 Laptop / Wi-Fi Lokal',
     url: `http://${DEV_MACHINE_IP}:${DEV_PORT}`,
@@ -28,7 +34,7 @@ export const SERVER_PRESETS = [
   },
 ];
 
-export const PRODUCTION_API_URL = 'https://screaner-saham-ihsg.onrender.com';
+export const PRODUCTION_API_URL = 'https://screaner-saham-ihsg.vercel.app';
 
 let customApiUrl: string | null = null;
 export let isLiveMarketConnected = false;

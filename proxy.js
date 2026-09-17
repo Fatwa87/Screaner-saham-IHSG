@@ -1298,12 +1298,15 @@ app.post('/api/gemini/set-key', (req, res) => {
 // Quote endpoints
 app.get('/api/quotes', handleQuotes);
 app.get('/v7/finance/quote', handleQuotes);
+app.get('/api/v7/finance/quote', handleQuotes);
 
 // Chart endpoints
 app.get('/api/chart/:symbol', handleChart);
 app.get('/api/chart', handleChart);
 app.get('/v8/finance/chart/:symbol', handleChart);
 app.get('/v8/finance/chart', handleChart);
+app.get('/api/v8/finance/chart/:symbol', handleChart);
+app.get('/api/v8/finance/chart', handleChart);
 
 // Static frontend serving if built (SPA support for public web)
 const distPath = path.join(__dirname, 'dist');
@@ -1329,14 +1332,16 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`=================================================`);
-  console.log(`🚀 Stock Master Proxy & Finmorph Live API Server`);
-  console.log(`📡 Listening on http://localhost:${PORT} and 0.0.0.0:${PORT}`);
-  console.log(`=================================================`);
-  
-  await getYahooSession();
-});
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', async () => {
+    console.log(`=================================================`);
+    console.log(`🚀 Stock Master Proxy & Finmorph Live API Server`);
+    console.log(`📡 Listening on http://localhost:${PORT} and 0.0.0.0:${PORT}`);
+    console.log(`=================================================`);
+    
+    await getYahooSession();
+  });
+}
 
 module.exports = app;
 

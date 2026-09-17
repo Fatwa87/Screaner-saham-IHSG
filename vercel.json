@@ -1,15 +1,13 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "proxy.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "proxy.js"
-    }
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index.js" },
+    { "source": "/v7/(.*)", "destination": "/api/index.js" },
+    { "source": "/v8/(.*)", "destination": "/api/index.js" },
+    { "source": "/health", "destination": "/api/index.js" },
+    { "source": "/Screaner-saham-IHSG/:path*", "destination": "/:path*" },
+    { "source": "/((?!api|v7|v8|health|_expo|assets|favicon.ico).*)", "destination": "/index.html" }
   ]
 }
