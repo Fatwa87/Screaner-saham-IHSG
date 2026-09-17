@@ -22,6 +22,9 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "experiments": {
+      "baseUrl": "/Screaner-saham-IHSG"
+    },
     "extra": {
       "eas": {
         "projectId": "7ef173e2-2032-4451-a59e-31c81209c2ca"
