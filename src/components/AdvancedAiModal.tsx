@@ -63,15 +63,9 @@ export default function AdvancedAiModal({
   }, [visible, ticker]);
 
   useEffect(() => {
-    getGeminiApiKey().then(k => {
-      setApiKeyInput(k);
-    });
     getServerKeyStatus().then(info => {
       setServerKeyInfo(info);
       setSavedKeyExists(info.hasKey);
-      if (info.hasKey && !apiKeyInput) {
-        setApiKeyInput(info.keyMasked);
-      }
     });
   }, [showKeyModal, visible]);
 
@@ -91,10 +85,13 @@ export default function AdvancedAiModal({
   };
 
   const handleSaveApiKey = async () => {
-    await saveGeminiApiKey(apiKeyInput);
+    if (apiKeyInput.trim()) {
+      await saveGeminiApiKey(apiKeyInput.trim());
+    }
     const info = await getServerKeyStatus();
     setServerKeyInfo(info);
     setSavedKeyExists(info.hasKey || !!apiKeyInput.trim());
+    setApiKeyInput('');
     setShowKeyModal(false);
     // Reload analysis immediately with newly planted key
     loadAnalysis();
@@ -226,12 +223,11 @@ export default function AdvancedAiModal({
           >
             {(serverKeyInfo.hasKey || savedKeyExists) ? (
               <Text style={styles.sourceTextGreen}>
-                🟢 <Text style={{ fontWeight: '900', color: '#34D399' }}>Google Gemini 3.6 Flash Aktif</Text>
-                {serverKeyInfo.keyMasked ? ` (Key: ${serverKeyInfo.keyMasked})` : ' (Planted Key)'} · Klik untuk ubah ➔
+                🟢 <Text style={{ fontWeight: '900', color: '#34D399' }}>Google Gemini AI Cloud Aktif</Text> · Status: Terhubung Aman ➔
               </Text>
             ) : (
               <Text style={styles.sourceTextPrompt}>
-                ⚡ <Text style={{ fontWeight: '900', color: '#38BDF8' }}>Tanam Gemini API Key:</Text> Klik di sini untuk menanam key agar analisa 100% diproses langsung oleh Gemini AI Cloud ➔
+                ⚡ <Text style={{ fontWeight: '900', color: '#38BDF8' }}>Tanam Gemini API Key:</Text> Klik di sini untuk menambahkan API key secara privat ➔
               </Text>
             )}
           </TouchableOpacity>
@@ -737,32 +733,51 @@ export default function AdvancedAiModal({
         >
           <View style={styles.keyModalOverlay}>
             <View style={styles.keyModalBox}>
-              <Text style={styles.keyModalTitle}>🔑 Tanam Otomatis Gemini API Key</Text>
+              <Text style={styles.keyModalTitle}>🔑 Pengaturan Gemini API Key</Text>
               <Text style={styles.keyModalSubtitle}>
-                Key disimpan permanen di file .env server dan memori aplikasi. Seluruh analisa saham otomatis diproses 100% langsung oleh Google Gemini 3.6 Flash!
+                Key disimpan secara aman di server. Karakter API key disembunyikan untuk menjaga privasi Anda.
               </Text>
+
+              <View style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                padding: 10,
+                borderRadius: 8,
+                marginBottom: 12,
+                borderWidth: 1,
+                borderColor: 'rgba(255, 255, 255, 0.08)'
+              }}>
+                <Text style={{ fontSize: 12, color: '#94A3B8' }}>
+                  Status Saat Ini:{' '}
+                  <Text style={{ fontWeight: '800', color: (serverKeyInfo.hasKey || savedKeyExists) ? '#34D399' : '#F59E0B' }}>
+                    {(serverKeyInfo.hasKey || savedKeyExists) ? '✅ API Key Terpasang (Aman)' : '⚠️ Belum Ada Key Terpasang'}
+                  </Text>
+                </Text>
+              </View>
 
               <TextInput
                 style={styles.keyInput}
-                placeholder="Paste AIzaSy... API Key di sini"
+                placeholder={(serverKeyInfo.hasKey || savedKeyExists) ? "Masukkan key baru jika ingin mengganti" : "Paste API Key Anda di sini"}
                 placeholderTextColor="#64748B"
                 value={apiKeyInput}
                 onChangeText={setApiKeyInput}
                 autoCapitalize="none"
                 autoCorrect={false}
-                secureTextEntry={false}
+                secureTextEntry={true}
               />
 
               <View style={styles.keyBtnRow}>
                 <TouchableOpacity
                   style={styles.btnKeyCancel}
-                  onPress={() => setShowKeyModal(false)}
+                  onPress={() => {
+                    setApiKeyInput('');
+                    setShowKeyModal(false);
+                  }}
                 >
-                  <Text style={styles.btnKeyCancelText}>Batal</Text>
+                  <Text style={styles.btnKeyCancelText}>Tutup</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.btnKeySave} onPress={handleSaveApiKey}>
-                  <Text style={styles.btnKeySaveText}>Tanam Permanen 🚀</Text>
+                  <Text style={styles.btnKeySaveText}>Simpan Aman 🔒</Text>
                 </TouchableOpacity>
               </View>
             </View>

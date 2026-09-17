@@ -1258,17 +1258,11 @@ app.post('/api/gemini/analyze', handleGeminiAnalyze);
 app.get('/api/gemini/key-status', (req, res) => {
   reloadPlantedGeminiKey();
   const hasKey = !!plantedGeminiKey;
-  let masked = '';
-  if (hasKey) {
-    masked = plantedGeminiKey.length > 8
-      ? plantedGeminiKey.slice(0, 6) + '...' + plantedGeminiKey.slice(-4)
-      : '******';
-  }
   res.json({
     hasKey,
-    keyMasked: masked,
+    keyMasked: hasKey ? '••••••••••••' : '',
     model: 'gemini-3.6-flash',
-    source: hasKey ? 'Google Gemini 3.6 Flash (Live AI - Planted)' : 'Gemini Quant Engine (Built-in)'
+    source: hasKey ? 'Google Gemini 3.6 Flash (Live AI)' : 'Gemini Quant Engine (Built-in)'
   });
 });
 
@@ -1283,11 +1277,11 @@ app.post('/api/gemini/set-key', (req, res) => {
     fs.writeFileSync(envPath, `GEMINI_API_KEY=${key}\n`, 'utf8');
     const cfgPath = path.join(__dirname, 'aiConfig.json');
     fs.writeFileSync(cfgPath, JSON.stringify({ GEMINI_API_KEY: key, updatedAt: new Date().toISOString() }, null, 2), 'utf8');
-    console.log('[Gemini Key] Successfully planted new key into .env and aiConfig.json');
+    console.log('[Gemini Key] Successfully saved key securely');
     res.json({
       success: true,
-      message: 'Gemini API Key berhasil ditanam secara otomatis di server & aplikasi!',
-      keyMasked: key.slice(0, 6) + '...' + key.slice(-4)
+      message: 'Gemini API Key berhasil disimpan secara aman di server!',
+      keyMasked: '••••••••••••'
     });
   } catch (e) {
     console.error('[Gemini Key] Error saving key:', e);
