@@ -1310,10 +1310,11 @@ const distPath = path.join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
   console.log('[Web Server] Serving production static web app from /dist');
   app.use(express.static(distPath));
+  app.use('/Screaner-saham-IHSG', express.static(distPath));
   // Catch-all SPA handler compatible with Express 5
   app.use((req, res, next) => {
     if (req.method === 'GET' && !req.path.startsWith('/api') && !req.path.startsWith('/v7') && !req.path.startsWith('/v8')) {
-      return res.sendFile(path.join(distPath, 'index.html'));
+      return res.sendFile('index.html', { root: distPath });
     }
     next();
   });
