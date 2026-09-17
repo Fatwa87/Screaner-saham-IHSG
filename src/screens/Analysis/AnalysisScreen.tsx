@@ -557,7 +557,23 @@ export default function AnalysisScreen({ route }: any) {
 
                   {/* Bandar-Based Trading Plan */}
                   <View style={styles.planSection}>
-                    <Text style={styles.planTitle}>📋 Trading Plan Berbasis Modal Bandar</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <Text style={styles.planTitle}>📋 Trading Plan Berbasis Modal Bandar</Text>
+                      {bandarmology.tradingPlan.tickSize ? (
+                        <View style={{
+                          backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                          borderColor: 'rgba(56, 189, 248, 0.4)',
+                          borderWidth: 1,
+                          borderRadius: 6,
+                          paddingHorizontal: 8,
+                          paddingVertical: 2,
+                        }}>
+                          <Text style={{ color: '#38BDF8', fontSize: 10, fontWeight: '800' }}>
+                            🏷️ Fraksi BEI: ± Rp {bandarmology.tradingPlan.tickSize}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
                     <View style={styles.planGrid}>
                       <View style={styles.planItem}>
                         <Text style={styles.planLabel}>Area Akumulasi</Text>

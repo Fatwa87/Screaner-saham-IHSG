@@ -311,20 +311,44 @@ export default function ScannersScreen({ navigation }: any) {
                 <Text style={styles.planLabel}>Risk / Reward</Text>
                 <Text style={styles.planValueCyan}>{item.riskReward}</Text>
               </View>
+              {item.tickSize && (
+                <View style={[styles.planCol, { alignItems: 'flex-end' }]}>
+                  <Text style={styles.planLabel}>Fraksi BEI</Text>
+                  <View style={{
+                    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderRadius: 4,
+                    borderWidth: 1,
+                    borderColor: 'rgba(56, 189, 248, 0.3)',
+                    marginTop: 2,
+                  }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#38BDF8' }}>
+                      ± Rp {item.tickSize}
+                    </Text>
+                  </View>
+                </View>
+              )}
             </View>
             <View style={styles.tradingPlanDivider} />
             <View style={styles.tradingPlanRow}>
               <View style={styles.planCol}>
                 <Text style={styles.planLabel}>Target Profit 1</Text>
-                <Text style={styles.planValueBlue}>{item.targetPrice1 ? formatRupiah(item.targetPrice1) : '—'} (+5%)</Text>
+                <Text style={styles.planValueBlue}>
+                  {item.targetPrice1 ? formatRupiah(item.targetPrice1) : '—'} (+{item.tp1PctActual !== undefined ? item.tp1PctActual : 5}%)
+                </Text>
               </View>
               <View style={styles.planCol}>
-                <Text style={styles.planLabel}>Target Profit 2 (ARA)</Text>
-                <Text style={styles.planValueBlue}>{item.targetPrice2 ? formatRupiah(item.targetPrice2) : '—'} (+10%)</Text>
+                <Text style={styles.planLabel}>Target 2 (ARA)</Text>
+                <Text style={styles.planValueBlue}>
+                  {item.targetPrice2 ? formatRupiah(item.targetPrice2) : '—'} (+{item.tp2PctActual !== undefined ? item.tp2PctActual : 10}%)
+                </Text>
               </View>
               <View style={styles.planCol}>
                 <Text style={styles.planLabel}>Stop Loss (SL)</Text>
-                <Text style={styles.planValueRed}>{item.stopLoss ? formatRupiah(item.stopLoss) : '—'} (-3.5%)</Text>
+                <Text style={styles.planValueRed}>
+                  {item.stopLoss ? formatRupiah(item.stopLoss) : '—'} (-{item.slPctActual !== undefined ? item.slPctActual : 3.5}%)
+                </Text>
               </View>
             </View>
           </View>

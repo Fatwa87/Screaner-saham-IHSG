@@ -1,4 +1,5 @@
 import { fetchQuotes, YFQuote } from './yfinance';
+import { calculateIdxTradingPlan } from './idxTickSize';
 
 export interface OrderflowOption {
   id: string;
@@ -111,6 +112,10 @@ export interface AlgoResult {
   conviction?: string;
   catalyst?: string;
   matchedCount?: number;
+  tickSize?: number;
+  tp1PctActual?: number;
+  tp2PctActual?: number;
+  slPctActual?: number;
 }
 
 /**
@@ -609,23 +614,17 @@ export const runRekomendasiBesok = async (tickers: string[]): Promise<AlgoResult
 
     skor = Math.min(99, Math.max(50, skor));
 
-    // Calculate Precision Trading Plan for Tomorrow
-    const buyLow = Math.round(price * 0.985);
-    const buyHigh = Math.round(price * 1.005);
-    const buyArea = `Rp ${buyLow.toLocaleString('id-ID')} - ${buyHigh.toLocaleString('id-ID')}`;
-
-    // Target Profit 1 (+4.5% s/d +6%)
-    const targetPrice1 = Math.round(price * 1.05);
-    // Target Profit 2 (+9% s/d +15% / Potensi ARA)
-    const targetPrice2 = Math.round(price * 1.10);
-    // Stop Loss (-3.5% s/d -4%)
-    const stopLoss = Math.round(price * 0.965);
-
-    // Risk / Reward Ratio
-    const risk = price - stopLoss;
-    const reward = targetPrice1 - price;
-    const rrRatio = risk > 0 ? (reward / risk).toFixed(1) : '2.5';
-    const riskReward = `1 : ${rrRatio}`;
+    // Calculate Precision Trading Plan for Tomorrow using Official IDX Tick Rules
+    const plan = calculateIdxTradingPlan(price, 0.05, 0.10, 0.035);
+    const buyArea = plan.buyAreaFormatted;
+    const targetPrice1 = plan.targetPrice1;
+    const targetPrice2 = plan.targetPrice2;
+    const stopLoss = plan.stopLoss;
+    const riskReward = plan.riskRewardRatio;
+    const tickSize = plan.tickSize;
+    const tp1PctActual = plan.targetPct1Actual;
+    const tp2PctActual = plan.targetPct2Actual;
+    const slPctActual = plan.stopLossPctActual;
 
     // Conviction Label
     let conviction = '🎯 BUY ON WEAKNESS';
@@ -668,6 +667,10 @@ export const runRekomendasiBesok = async (tickers: string[]): Promise<AlgoResult
       conviction,
       catalyst,
       matchedCount,
+      tickSize,
+      tp1PctActual,
+      tp2PctActual,
+      slPctActual,
     });
   }
 

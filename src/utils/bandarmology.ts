@@ -1,4 +1,5 @@
 import { YFHistory } from './yfinance';
+import { getIdxTickSize, roundToIdxTick } from './idxTickSize';
 
 export interface SmartMoneyDay {
   dayIndex: number;
@@ -18,6 +19,7 @@ export interface TradingPlan {
   tp2: number;
   riskReward: string;
   advice: string;
+  tickSize?: number;
 }
 
 export interface BandarmologyResult {
@@ -174,19 +176,20 @@ export const calculateBandarmology = (
     };
   });
 
-  // 4. Calculate Trading Plan
-  const entryMin = Math.round(avgBandar * 0.98);
-  const entryMax = Math.round(avgBandar * 1.03);
-  const stopLoss = Math.round(avgBandar * 0.95); // 5% below bandar avg
-  const tp1 = Math.round(avgBandar * 1.08); // +8%
-  const tp2 = Math.round(avgBandar * 1.18); // +18%
+  // 4. Calculate Trading Plan (Strictly adhering to official IDX Tick Sizes)
+  const tickSize = getIdxTickSize(cur);
+  const entryMin = roundToIdxTick(avgBandar * 0.98, 'floor');
+  const entryMax = roundToIdxTick(avgBandar * 1.03, 'ceil');
+  const stopLoss = roundToIdxTick(avgBandar * 0.95, 'floor'); // 5% below bandar avg
+  const tp1 = roundToIdxTick(cur * 1.08, 'floor'); // +8%
+  const tp2 = roundToIdxTick(cur * 1.18, 'floor'); // +18%
 
   const risk = Math.max(cur - stopLoss, 1);
   const reward = Math.max(tp1 - cur, 1);
   const rrValue = (reward / risk).toFixed(1);
   const riskReward = `1 : ${rrValue}`;
 
-  let advice = `Rekomendasi: Akumulasi bertahap di rentang Rp${entryMin.toLocaleString('id-ID')} - Rp${entryMax.toLocaleString('id-ID')} dengan Stop Loss ketat di bawah Rp${stopLoss.toLocaleString('id-ID')}.`;
+  let advice = `Rekomendasi: Akumulasi bertahap di rentang Rp${entryMin.toLocaleString('id-ID')} - Rp${entryMax.toLocaleString('id-ID')} (Fraksi BEI: Rp${tickSize}) dengan Stop Loss ketat di bawah Rp${stopLoss.toLocaleString('id-ID')}.`;
   if (distancePct > 15) {
     advice = `Peringatan: Harga sudah melambung +${distancePct}% dari modal bandar. Kurangi posisi dan pasang trailing stop.`;
   }
@@ -213,6 +216,7 @@ export const calculateBandarmology = (
       tp2,
       riskReward,
       advice,
+      tickSize,
     },
   };
 };
