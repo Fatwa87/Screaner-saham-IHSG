@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: stock-master
+    env: node
+    plan: free
+    buildCommand: npm install && npx expo export -p web
+    startCommand: node proxy.js
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: GEMINI_API_KEY
+        sync: false
