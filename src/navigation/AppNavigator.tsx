@@ -4,7 +4,6 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 
 import DashboardScreen from '../screens/Dashboard/DashboardScreen';
-import KrakenFlowScreen from '../screens/KrakenFlow/KrakenFlowScreen';
 import ScannersScreen from '../screens/Scanners/ScannersScreen';
 import AnalysisScreen from '../screens/Analysis/AnalysisScreen';
 import PortfolioScreen from '../screens/Portfolio/PortfolioScreen';
@@ -84,13 +83,6 @@ export default function AppNavigator() {
               component={DashboardScreen} 
               options={{ 
                 tabBarIcon: ({ focused }) => <TabIcon icon="🌐" label="Makro" focused={focused} />,
-              }} 
-            />
-            <Tab.Screen 
-              name="KrakenFlow" 
-              component={KrakenFlowScreen} 
-              options={{ 
-                tabBarIcon: ({ focused }) => <TabIcon icon="🐙" label="Kraken" focused={focused} />,
               }} 
             />
             <Tab.Screen 
