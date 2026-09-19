@@ -715,20 +715,19 @@ async function handleKrakenFlow(req, res) {
 // ═════════════════════════════════════════════════════════════════
 const newsCache = new Map();
 
-async function handleNews(req, res) {
-  const rawSymbol = req.params.symbol || req.query.symbol || 'BBCA';
-  const clean = rawSymbol.toUpperCase().replace('.JK', '').trim();
+async function fetchNewsData(rawSymbol) {
+  const clean = (rawSymbol || 'BBCA').toUpperCase().replace('.JK', '').trim();
   const cacheKey = `news_${clean}`;
 
   if (newsCache.has(cacheKey) && (Date.now() - newsCache.get(cacheKey).time < 300000)) {
-    return res.json(newsCache.get(cacheKey).data);
+    return newsCache.get(cacheKey).data;
   }
 
   try {
     const searchUrl = `https://news.google.com/rss/search?q=saham+${encodeURIComponent(clean)}&hl=id&gl=ID&ceid=ID:id`;
     const r = await axios.get(searchUrl, {
       headers: { 'User-Agent': USER_AGENT },
-      timeout: 8000,
+      timeout: 5000,
     });
 
     const rawItems = (r.data.match(/<item>[\s\S]*?<\/item>/g) || []).slice(0, 8);
@@ -809,10 +808,10 @@ async function handleNews(req, res) {
     };
 
     newsCache.set(cacheKey, { time: Date.now(), data: payload });
-    return res.json(payload);
+    return payload;
   } catch (err) {
-    console.warn(`[handleNews] Error for ${clean}:`, err.message);
-    return res.json({
+    console.warn(`[fetchNewsData] Error for ${clean}:`, err.message);
+    return {
       symbol: clean,
       items: [
         {
@@ -827,8 +826,14 @@ async function handleNews(req, res) {
       overallLabel: 'NETRAL',
       sentimentScorePct: 50,
       fetchedAt: new Date().toISOString()
-    });
+    };
   }
+}
+
+async function handleNews(req, res) {
+  const rawSymbol = req.params.symbol || req.query.symbol || 'BBCA';
+  const data = await fetchNewsData(rawSymbol);
+  return res.json(data);
 }
 
 // ═════════════════════════════════════════════════════════════════
@@ -840,21 +845,31 @@ const MONTH_NAMES = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
-async function handleSeasonality(req, res) {
-  const rawSymbol = req.params.symbol || req.query.symbol || 'BBCA';
-  const clean = rawSymbol.toUpperCase().replace('.JK', '').trim();
+function getJakartaMonthIndex() {
+  try {
+    const dStr = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jakarta', month: 'numeric' }).format(new Date());
+    return parseInt(dStr, 10) - 1;
+  } catch (_) {
+    return new Date().getMonth();
+  }
+}
+
+async function fetchSeasonalityData(rawSymbol) {
+  const clean = (rawSymbol || 'BBCA').toUpperCase().replace('.JK', '').trim();
   const cacheKey = `seasonality_${clean}`;
 
   if (seasonalityCache.has(cacheKey) && (Date.now() - seasonalityCache.get(cacheKey).time < 3600000)) {
-    return res.json(seasonalityCache.get(cacheKey).data);
+    return seasonalityCache.get(cacheKey).data;
   }
+
+  const currentMonthIdx = getJakartaMonthIndex();
 
   try {
     const symbol = `${clean}.JK`;
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1mo&range=5y`;
     const yRes = await axios.get(url, {
       headers: { 'User-Agent': USER_AGENT },
-      timeout: 8000,
+      timeout: 5000,
     });
 
     const chart = yRes.data?.chart?.result?.[0];
@@ -904,9 +919,7 @@ async function handleSeasonality(req, res) {
     const sortedByWinRate = [...monthStats].sort((a, b) => b.winRatePct - a.winRatePct || b.avgReturnPct - a.avgReturnPct);
     const bestMonth = sortedByWinRate[0] || { monthName: 'Desember', winRatePct: 80, avgReturnPct: 4.2 };
     const worstMonth = sortedByWinRate[sortedByWinRate.length - 1] || { monthName: 'Mei', winRatePct: 40, avgReturnPct: -1.5 };
-
-    const currentMonthIdx = new Date().getMonth();
-    const currentMonthData = monthStats[currentMonthIdx];
+    const currentMonthData = monthStats[currentMonthIdx] || { monthName: MONTH_NAMES[currentMonthIdx], winRatePct: 60, avgReturnPct: 1.5 };
 
     const payload = {
       symbol: clean,
@@ -930,9 +943,9 @@ async function handleSeasonality(req, res) {
     };
 
     seasonalityCache.set(cacheKey, { time: Date.now(), data: payload });
-    return res.json(payload);
+    return payload;
   } catch (err) {
-    console.warn(`[handleSeasonality] Error for ${clean}:`, err.message);
+    console.warn(`[fetchSeasonalityData] Error for ${clean}:`, err.message);
     const fallbackMonths = MONTH_NAMES.map((name, idx) => {
       let winRate = 50;
       let avg = 0.8;
@@ -954,15 +967,23 @@ async function handleSeasonality(req, res) {
       };
     });
 
-    return res.json({
+    const currentMonthData = fallbackMonths[currentMonthIdx] || { monthName: MONTH_NAMES[currentMonthIdx], winRatePct: 60, avgReturnPct: 1.5 };
+
+    return {
       symbol: clean,
       months: fallbackMonths,
       bestMonth: { name: 'Desember', winRatePct: 80, avgReturnPct: 4.2 },
       worstMonth: { name: 'Mei', winRatePct: 40, avgReturnPct: -1.5 },
-      currentMonth: { name: MONTH_NAMES[new Date().getMonth()], winRatePct: 60, avgReturnPct: 1.5 },
+      currentMonth: { name: currentMonthData.monthName, winRatePct: currentMonthData.winRatePct, avgReturnPct: currentMonthData.avgReturnPct },
       fetchedAt: new Date().toISOString()
-    });
+    };
   }
+}
+
+async function handleSeasonality(req, res) {
+  const rawSymbol = req.params.symbol || req.query.symbol || 'BBCA';
+  const data = await fetchSeasonalityData(rawSymbol);
+  return res.json(data);
 }
 
 // ═════════════════════════════════════════════════════════════════
@@ -977,44 +998,58 @@ async function handleGeminiAnalyze(req, res) {
     // 1. Fetch Quote
     const quotes = await getInternalQuotes([symbol]);
     const q = quotes[symbol] || generateFallbackQuote(`${symbol}.JK`);
-    const price = q.regularMarketPrice || 1000;
-    const chgPct = q.regularMarketChangePercent || 0;
+    const price = (clientData.clientPrice !== undefined && clientData.clientPrice !== null && !isNaN(Number(clientData.clientPrice)) && Number(clientData.clientPrice) > 0)
+      ? Number(clientData.clientPrice)
+      : (q.regularMarketPrice || 1000);
+    const chgPct = (clientData.clientChangePct !== undefined && clientData.clientChangePct !== null && clientData.clientChangePct !== '' && !isNaN(Number(clientData.clientChangePct)))
+      ? Number(clientData.clientChangePct)
+      : (q.regularMarketChangePercent || 0);
 
-    // 2. Fetch Fundamentals from Finmorph or Quote
-    let finData = null;
-    try {
-      const fundCacheKey = `fund_${symbol}`;
-      if (finmorphCache.has(fundCacheKey) && (Date.now() - finmorphCache.get(fundCacheKey).time < 600000)) {
-        finData = finmorphCache.get(fundCacheKey).data;
-      } else {
+    // 2. Fetch Fundamentals & Flow & Seasonality & News concurrently in parallel
+    const fundCacheKey = `fund_${symbol}`;
+    const flowCacheKey = `flow_${symbol}`;
+
+    const [finResult, flowResult, seasonResult, newsResult] = await Promise.allSettled([
+      // Fundamentals
+      (async () => {
+        if (finmorphCache.has(fundCacheKey) && (Date.now() - finmorphCache.get(fundCacheKey).time < 600000)) {
+          return finmorphCache.get(fundCacheKey).data;
+        }
         const finRes = await axios.get(`https://finmorphid.com/premium/api/stock_fundamentals.php?symbol=${symbol}`, {
           headers: { 'User-Agent': USER_AGENT },
-          timeout: 4000,
+          timeout: 3000,
         });
         if (finRes.data && !finRes.data.error) {
-          finData = finRes.data;
-          finmorphCache.set(fundCacheKey, { time: Date.now(), data: finData });
+          finmorphCache.set(fundCacheKey, { time: Date.now(), data: finRes.data });
+          return finRes.data;
         }
-      }
-    } catch (_) {}
-
-    // 2b. Fetch Live Smart Money Flow from Finmorph
-    let flowData = null;
-    try {
-      const flowCacheKey = `flow_${symbol}`;
-      if (finmorphCache.has(flowCacheKey) && (Date.now() - finmorphCache.get(flowCacheKey).time < 300000)) {
-        flowData = finmorphCache.get(flowCacheKey).data;
-      } else {
+        return null;
+      })(),
+      // Flow
+      (async () => {
+        if (finmorphCache.has(flowCacheKey) && (Date.now() - finmorphCache.get(flowCacheKey).time < 300000)) {
+          return finmorphCache.get(flowCacheKey).data;
+        }
         const flowRes = await axios.get(`https://finmorphid.com/premium/api/stock_flow.php?symbol=${symbol}`, {
           headers: { 'User-Agent': USER_AGENT },
-          timeout: 4000,
+          timeout: 3000,
         });
         if (flowRes.data && !flowRes.data.error) {
-          flowData = flowRes.data;
-          finmorphCache.set(flowCacheKey, { time: Date.now(), data: flowData });
+          finmorphCache.set(flowCacheKey, { time: Date.now(), data: flowRes.data });
+          return flowRes.data;
         }
-      }
-    } catch (_) {}
+        return null;
+      })(),
+      // Seasonality (in-memory internal call, works reliably on both Localhost & Vercel Serverless)
+      fetchSeasonalityData(symbol),
+      // News (in-memory internal call, works reliably on both Localhost & Vercel Serverless)
+      fetchNewsData(symbol)
+    ]);
+
+    const finData = finResult.status === 'fulfilled' ? finResult.value : null;
+    const flowData = flowResult.status === 'fulfilled' ? flowResult.value : null;
+    const seasonData = seasonResult.status === 'fulfilled' ? seasonResult.value : null;
+    const newsData = newsResult.status === 'fulfilled' ? newsResult.value : null;
 
     // Extract PER, PBV, ROE, ROA, DER, EPS
     const eps = q.epsTrailingTwelveMonths || 
@@ -1054,20 +1089,6 @@ async function handleGeminiAnalyze(req, res) {
         der = !isNaN(valNum) ? parseFloat((valNum / 100).toFixed(2)) : 0.65;
       }
     }
-
-    // 3. Fetch Seasonality
-    let seasonData = null;
-    try {
-      const sRes = await axios.get(`http://localhost:${PORT}/api/seasonality/${symbol}`, { timeout: 4000 });
-      seasonData = sRes.data;
-    } catch (_) {}
-
-    // 4. Fetch News
-    let newsData = null;
-    try {
-      const nRes = await axios.get(`http://localhost:${PORT}/api/news/${symbol}`, { timeout: 4000 });
-      newsData = nRes.data;
-    } catch (_) {}
 
     // BEI Official Tick Size Helper
     function getBeiTick(p) {
