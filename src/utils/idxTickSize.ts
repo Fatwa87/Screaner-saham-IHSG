@@ -162,3 +162,65 @@ export const calculateIdxTradingPlan = (
     tickSize,
   };
 };
+
+/**
+ * Mendapatkan batas maksimal persentase Auto Rejection Atas (ARA) resmi BEI
+ * Berdasarkan Surat Keputusan Direksi BEI:
+ * - Harga <= Rp 200: +35%
+ * - Rp 200 < Harga <= Rp 5.000: +25%
+ * - Harga > Rp 5.000: +20%
+ * - Papan Pemantauan Khusus / FCA (Rp 1 - Rp 50): +10%
+ */
+export const getIdxMaxAraPercent = (prevPrice: number, isFca = false): number => {
+  if (isFca || prevPrice < 50) return 10;
+  if (prevPrice <= 200) return 35;
+  if (prevPrice <= 5000) return 25;
+  return 20;
+};
+
+/**
+ * Menghitung Harga ARA Resmi BEI (Auto Rejection Atas)
+ * Berdasarkan harga penutupan hari sebelumnya (previous close) 
+ * dan dibulatkan ke fraksi harga sah terdekat (floor).
+ */
+export const calculateIdxAraPrice = (prevClose: number, isFca = false): number => {
+  if (prevClose <= 1) return 1;
+  const maxAraPct = getIdxMaxAraPercent(prevClose, isFca);
+  const rawAra = prevClose * (1 + (maxAraPct / 100));
+  return roundToIdxTick(rawAra, 'floor');
+};
+
+/**
+ * Menghitung jarak ke harga ARA (dalam persentase dan jumlah tick papan)
+ */
+export const calculateDistanceToAra = (currentPrice: number, araPrice: number): {
+  distancePct: number;
+  distanceTicks: number;
+  isLocked: boolean;
+} => {
+  if (currentPrice >= araPrice || currentPrice <= 0) {
+    return {
+      distancePct: 0,
+      distanceTicks: 0,
+      isLocked: currentPrice >= araPrice,
+    };
+  }
+
+  const distancePct = Number((((araPrice - currentPrice) / currentPrice) * 100).toFixed(2));
+  
+  // Hitung jumlah tick dari currentPrice ke araPrice
+  let temp = currentPrice;
+  let ticks = 0;
+  while (temp < araPrice && ticks < 200) {
+    const tickSize = getIdxTickSize(temp);
+    temp += tickSize;
+    ticks++;
+  }
+
+  return {
+    distancePct,
+    distanceTicks: ticks,
+    isLocked: ticks === 0 || currentPrice >= araPrice,
+  };
+};
+

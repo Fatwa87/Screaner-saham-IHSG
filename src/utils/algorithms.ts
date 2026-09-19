@@ -1,5 +1,12 @@
 import { fetchQuotes, YFQuote } from './yfinance';
-import { calculateIdxTradingPlan } from './idxTickSize';
+import { 
+  calculateIdxTradingPlan, 
+  getIdxTickSize, 
+  roundToIdxTick, 
+  getIdxMaxAraPercent, 
+  calculateIdxAraPrice, 
+  calculateDistanceToAra 
+} from './idxTickSize';
 
 export interface OrderflowOption {
   id: string;
@@ -116,6 +123,16 @@ export interface AlgoResult {
   tp1PctActual?: number;
   tp2PctActual?: number;
   slPctActual?: number;
+  // Extended fields for ARA Hunter Pro
+  araPrice?: number;
+  maxAraPct?: number;
+  distanceToAraPct?: number;
+  distanceTicks?: number;
+  isLockedAra?: boolean;
+  isOpenEqualsLow?: boolean;
+  araStage?: string;
+  turnoverIdr?: number;
+  prevClose?: number;
 }
 
 /**
@@ -367,7 +384,7 @@ export const runAlgoScalping = async (tickers: string[]): Promise<AlgoResult[]> 
   return results.sort((a, b) => b.skor - a.skor);
 };
 
-// 3. ARA Hunter v3.0 (Open = Low & Bandar Volume Spike)
+// 3. ARA Hunter Pro (Official BEI Auto Rejection Atas, Open=Low & Distance to ARA Engine)
 export const runAraHunter = async (tickers: string[]): Promise<AlgoResult[]> => {
   const quotes = await fetchQuotes(tickers);
   const results: AlgoResult[] = [];
@@ -377,47 +394,106 @@ export const runAraHunter = async (tickers: string[]): Promise<AlgoResult[]> => 
     if (!q || !q.regularMarketPrice) continue;
 
     const price = q.regularMarketPrice || 0;
+    const prevClose = q.regularMarketPreviousClose || price;
     const open = q.regularMarketOpen || price;
     const high = q.regularMarketDayHigh || price;
     const low = q.regularMarketDayLow || price;
     const chgPct = q.regularMarketChangePercent || 0;
     const vol = q.regularMarketVolume || 0;
     const avgVol = q.averageDailyVolume10Day || q.averageDailyVolume3Month || 100000;
+    const turnoverIdr = price * vol;
+
+    // Filter out completely dead/inactive stocks with zero trading activity
+    if (price <= 50 && vol < 5000000 && Math.abs(chgPct) < 2) continue;
+    if (vol === 0 && Math.abs(chgPct) === 0) continue;
 
     const volSpike = avgVol > 0 ? vol / avgVol : 1;
-    const intradayPower = (high === low) ? 1.0 : (price - low) / (high - low);
-    
-    // Open = Low condition: Open equals Low (or within 0.5% tolerance)
-    const isOpenEqualsLow = open > 0 && Math.abs(open - low) <= (open * 0.005);
+    const totalRange = high - low;
+    const intradayPower = (totalRange > 0) ? (price - low) / totalRange : 0.5;
 
-    let skor = 0;
-    if (price <= 50) {
-      skor = 0;
+    // 1. BEI Official Auto Rejection Atas (ARA) Limit & Target Calculation
+    const isFca = price < 50;
+    const maxAraPct = getIdxMaxAraPercent(prevClose, isFca);
+    const araPrice = calculateIdxAraPrice(prevClose, isFca);
+    const distanceInfo = calculateDistanceToAra(price, araPrice);
+    const distanceToAraPct = distanceInfo.distancePct;
+    const distanceTicks = distanceInfo.distanceTicks;
+    const isLockedAra = distanceInfo.isLocked || (high >= araPrice && price >= araPrice * 0.99);
+
+    // 2. Open = Low Precision Analysis (Maksimal 0.35% / 1 tick toleransi)
+    const tickSize = getIdxTickSize(open);
+    const isOpenEqualsLow = open > 0 && ((open - low) <= Math.max(1, tickSize) || Math.abs(open - low) <= (open * 0.0035));
+
+    // 3. Multi-Factor ARA Scoring (0 - 100)
+    let skor = 20;
+
+    // A. Price Surge & Distance to ARA (Up to 35 pts)
+    if (isLockedAra) {
+      skor = 100; // Locked ARA ceiling
     } else {
-      if (isOpenEqualsLow && price > open) skor += 35;
-      if (intradayPower >= 0.90) skor += 25;
-      else if (intradayPower >= 0.70) skor += 15;
-      
-      if (volSpike >= 2.0) skor += 25;
-      else if (volSpike >= 1.2) skor += 15;
-      
-      if (chgPct >= 4 && chgPct <= 24) skor += 15;
-      else if (chgPct > 24) skor += 20; // Near/At ARA lock
+      if (chgPct >= 18) skor += 30;
+      else if (chgPct >= 10) skor += 24;
+      else if (chgPct >= 5) skor += 16;
+      else if (chgPct >= 2) skor += 8;
+
+      // Bonus jika mendekati batas ARA dengan momentum
+      if (distanceToAraPct <= 5 && chgPct > 5) skor += 15;
+      else if (distanceToAraPct <= 10 && chgPct > 3) skor += 10;
     }
 
-    let status = "⚠️ BELUM CONFIRM";
-    if (price <= 50) status = "💤 SAHAM TIDUR";
-    else if (chgPct < 0) status = "❌ DOWNTREND";
-    else if (skor >= 80) status = "🚀 O=L POTENSI ARA";
-    else if (skor >= 55) status = "👀 MOMENTUM BANDAR";
-    else if (skor >= 35) status = "⚡ SPECULATIVE BUY";
+    // B. Open = Low Power (Up to 25 pts)
+    if (isOpenEqualsLow && price > open) {
+      skor += 25;
+    } else if (open > 0 && price >= open) {
+      skor += 10;
+    }
 
+    // C. Volume & Turnover Spike (Up to 25 pts)
+    if (volSpike >= 3.0) skor += 25;
+    else if (volSpike >= 2.0) skor += 18;
+    else if (volSpike >= 1.3) skor += 12;
+    else if (volSpike >= 0.9) skor += 6;
+
+    if (turnoverIdr >= 10000000000) skor += 8; // > 10 Miliar
+    else if (turnoverIdr >= 3000000000) skor += 5; // > 3 Miliar
+
+    // D. Intraday Bull Power & Pinned High (Up to 15 pts)
+    if (intradayPower >= 0.90) skor += 15;
+    else if (intradayPower >= 0.75) skor += 8;
+
+    skor = Math.min(100, Math.max(10, skor));
+
+    // 4. Order Flow & Bandarmology Tags
     const orderflowTags = computeOrderflowTags(ticker, q, volSpike, intradayPower);
+
+    // 5. ARA Stage Classification
+    let araStage = '👀 MOMENTUM AWAL';
+    if (isLockedAra) {
+      araStage = '🔒 ARA LOCKED (DIGEMBOK)';
+    } else if (skor >= 82 && distanceToAraPct <= 8) {
+      araStage = '🚀 SUPER ARA RUNNER';
+    } else if (isOpenEqualsLow && chgPct >= 4 && chgPct < 18) {
+      araStage = '⚡ O=L ARA BREAKOUT';
+    } else if (skor >= 65) {
+      araStage = '🔥 POTENSI ARA TINGGI';
+    } else if (isOpenEqualsLow && chgPct > 0) {
+      araStage = '🎯 O=L EARLY ENTRY';
+    }
+
+    // 6. ARA Specific Trading Plan
+    // TP1 is ARA Price, Stop Loss is 1-2 ticks below Open/Low
+    const safeOpen = Math.max(1, roundToIdxTick(open));
+    const araStopLoss = roundToIdxTick(Math.min(safeOpen * 0.97, low), 'floor');
+    const riskAmount = price - araStopLoss;
+    const rewardAmount = Math.max(1, araPrice - price);
+    const rrVal = riskAmount > 0 ? (rewardAmount / riskAmount).toFixed(1) : '2.5';
+    const riskReward = `1 : ${rrVal}`;
 
     results.push({
       ticker,
       name: q.shortName || ticker,
       price,
+      prevClose,
       chgPct,
       open,
       high,
@@ -425,12 +501,35 @@ export const runAraHunter = async (tickers: string[]): Promise<AlgoResult[]> => 
       bullPower: Number((intradayPower * 100).toFixed(0)),
       volSpike: Number(volSpike.toFixed(2)),
       skor,
-      status,
+      pred: araStage,
+      status: araStage,
+      araStage,
+      araPrice,
+      maxAraPct,
+      distanceToAraPct,
+      distanceTicks,
+      isLockedAra,
+      isOpenEqualsLow,
+      turnoverIdr,
+      targetPrice1: araPrice,
+      stopLoss: araStopLoss,
+      riskReward,
+      tickSize,
       orderflowTags,
+      matchedCount: orderflowTags.length,
     });
   }
 
-  return results.sort((a, b) => b.skor - a.skor);
+  // Filter out completely dead/inactive stocks with 0 volume
+  const activeResults = results.filter(r => (r.price > 0 && (r.volSpike || 0) > 0.05));
+
+  // Sort: First by ARA Locked, then highest score, then closest distance to ARA
+  return activeResults.sort((a, b) => {
+    if (a.isLockedAra && !b.isLockedAra) return -1;
+    if (!a.isLockedAra && b.isLockedAra) return 1;
+    if (b.skor !== a.skor) return b.skor - a.skor;
+    return (a.distanceToAraPct || 100) - (b.distanceToAraPct || 100);
+  });
 };
 
 // 4. Super Easy Trend Follower (Swing Trading)

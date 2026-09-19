@@ -170,31 +170,42 @@ async function handleQuotes(req, res) {
   const results = [];
   const missingSymbols = [];
 
-  const BATCH_SIZE = 30;
+  const BATCH_SIZE = 60;
+  const batches = [];
   for (let i = 0; i < normalizedSymbols.length; i += BATCH_SIZE) {
-    const batch = normalizedSymbols.slice(i, i + BATCH_SIZE);
-    try {
-      const url = 'https://query1.finance.yahoo.com/v7/finance/quote';
-      const params = { symbols: batch.join(',') };
-      if (sess.crumb) params.crumb = sess.crumb;
+    batches.push(normalizedSymbols.slice(i, i + BATCH_SIZE));
+  }
 
-      const headers = { 'User-Agent': USER_AGENT };
-      if (sess.cookie) headers['Cookie'] = sess.cookie;
+  // Process concurrent pools of 5 batches
+  const CONCURRENCY = 5;
+  for (let i = 0; i < batches.length; i += CONCURRENCY) {
+    const chunk = batches.slice(i, i + CONCURRENCY);
+    await Promise.all(
+      chunk.map(async (batch) => {
+        try {
+          const url = 'https://query1.finance.yahoo.com/v7/finance/quote';
+          const params = { symbols: batch.join(',') };
+          if (sess.crumb) params.crumb = sess.crumb;
 
-      const yRes = await axios.get(url, { params, headers, timeout: 7000 });
-      const items = yRes.data?.quoteResponse?.result || [];
-      
-      items.forEach(item => {
-        results.push(item);
-        quotesCache.set(item.symbol, item);
-      });
-    } catch (err) {
-      console.warn(`[handleQuotes] Error fetching batch ${batch.join(',')}: ${err.message}`);
-      if (err.response?.status === 401) {
-        sess = await getYahooSession(true);
-      }
-      batch.forEach(s => missingSymbols.push(s));
-    }
+          const headers = { 'User-Agent': USER_AGENT };
+          if (sess.cookie) headers['Cookie'] = sess.cookie;
+
+          const yRes = await axios.get(url, { params, headers, timeout: 8000 });
+          const items = yRes.data?.quoteResponse?.result || [];
+          
+          items.forEach(item => {
+            results.push(item);
+            quotesCache.set(item.symbol, item);
+          });
+        } catch (err) {
+          console.warn(`[handleQuotes] Error fetching batch: ${err.message}`);
+          if (err.response?.status === 401) {
+            sess = await getYahooSession(true);
+          }
+          batch.forEach(s => missingSymbols.push(s));
+        }
+      })
+    );
   }
 
   const returnedSymbols = new Set(results.map(r => r.symbol));

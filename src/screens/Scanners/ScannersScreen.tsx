@@ -13,11 +13,7 @@ import { COLORS, SIZES } from '../../constants/theme';
 import { ALGO_UNIVERSES } from '../../constants/universe';
 import {
   runRekomendasiBesok,
-  runAlgoPrediksi,
-  runAlgoScalping,
   runAraHunter,
-  runScanner,
-  runRecehScanner,
   AlgoResult,
   SCANNER_ORDERFLOW_OPTIONS,
   OrderflowOption,
@@ -25,10 +21,12 @@ import {
 import { formatPercent, formatRupiah } from '../../utils/formatters';
 import AdvancedAiModal from '../../components/AdvancedAiModal';
 
-type ScannerType = 'rekomendasiBesok' | 'prediksi' | 'scalping' | 'ara' | 'superEasy' | 'receh' | 'semua';
+type ScannerType = 'rekomendasiBesok' | 'ara';
+type AraSubFilter = 'semua' | 'open_low' | 'potensi' | 'locked';
 
 export default function ScannersScreen({ navigation }: any) {
   const [activeTab, setActiveTab] = useState<ScannerType>('rekomendasiBesok');
+  const [araSubFilter, setAraSubFilter] = useState<AraSubFilter>('semua');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<AlgoResult[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -60,18 +58,8 @@ export default function ScannersScreen({ navigation }: any) {
       let res: AlgoResult[] = [];
       if (type === 'rekomendasiBesok') {
         res = await runRekomendasiBesok(ALGO_UNIVERSES.rekomendasiBesok);
-      } else if (type === 'prediksi') {
-        res = await runAlgoPrediksi(ALGO_UNIVERSES.prediksi);
-      } else if (type === 'scalping') {
-        res = await runAlgoScalping(ALGO_UNIVERSES.scalping);
       } else if (type === 'ara') {
-        res = await runAraHunter(ALGO_UNIVERSES.arahunter);
-      } else if (type === 'superEasy') {
-        res = await runScanner(ALGO_UNIVERSES.superEasy);
-      } else if (type === 'receh') {
-        res = await runRecehScanner(ALGO_UNIVERSES.receh);
-      } else if (type === 'semua') {
-        // Full comprehensive universe covering all active IDX stocks & FCA
+        // Full universe scanning: All 935 listed companies in Bursa Efek Indonesia
         res = await runAraHunter(ALGO_UNIVERSES.semua);
       }
       setResults(res);
@@ -126,11 +114,33 @@ export default function ScannersScreen({ navigation }: any) {
     return counts;
   }, [results]);
 
+  // ARA Sub-filter counts
+  const araCounts = useMemo(() => {
+    if (activeTab !== 'ara') return { total: 0, openLow: 0, potensi: 0, locked: 0 };
+    return {
+      total: results.length,
+      openLow: results.filter(r => r.isOpenEqualsLow).length,
+      potensi: results.filter(r => !r.isLockedAra && (r.distanceToAraPct || 100) <= 12 && r.skor >= 60).length,
+      locked: results.filter(r => r.isLockedAra).length,
+    };
+  }, [results, activeTab]);
+
   // Filter and sort results
   const filteredResults = useMemo(() => {
     let list = results;
 
-    // 1. Text search query
+    // 1. ARA Sub-Filter (when in ARA Hunter Pro mode)
+    if (activeTab === 'ara') {
+      if (araSubFilter === 'open_low') {
+        list = list.filter(item => item.isOpenEqualsLow);
+      } else if (araSubFilter === 'potensi') {
+        list = list.filter(item => !item.isLockedAra && (item.distanceToAraPct || 100) <= 12 && item.skor >= 60);
+      } else if (araSubFilter === 'locked') {
+        list = list.filter(item => item.isLockedAra);
+      }
+    }
+
+    // 2. Text search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter(item =>
@@ -139,59 +149,51 @@ export default function ScannersScreen({ navigation }: any) {
       );
     }
 
-    // 2. Order Flow & Bandarmology 8 criteria filters
+    // 3. Order Flow & Bandarmology 8 criteria filters
     if (selectedFlowFilters.length === 1) {
       const targetId = selectedFlowFilters[0];
       list = list.filter(item => item.orderflowTags?.includes(targetId));
     } else if (selectedFlowFilters.length > 1) {
-      // Prioritize stocks that match ALL selected filters
       const strictMatches = list.filter(item =>
         selectedFlowFilters.every(fid => item.orderflowTags?.includes(fid))
       );
-
       if (strictMatches.length > 0) {
         list = strictMatches;
       } else {
-        // Otherwise show stocks that match any, sorted by match count descending
-        list = list
-          .map(item => ({
-            ...item,
-            _matchCount: selectedFlowFilters.filter(fid => item.orderflowTags?.includes(fid)).length,
-          }))
-          .filter((item: any) => item._matchCount > 0)
-          .sort((a: any, b: any) => b._matchCount - a._matchCount);
+        list = list.filter(item =>
+          selectedFlowFilters.some(fid => item.orderflowTags?.includes(fid))
+        );
       }
     }
 
     return list;
-  }, [results, searchQuery, selectedFlowFilters]);
+  }, [results, searchQuery, selectedFlowFilters, activeTab, araSubFilter]);
 
   const activeOptionDef = useMemo(() => {
-    const idToFind = activeInfoFilter || (selectedFlowFilters.length > 0 ? selectedFlowFilters[0] : null);
-    return idToFind ? SCANNER_ORDERFLOW_OPTIONS.find(o => o.id === idToFind) : null;
-  }, [activeInfoFilter, selectedFlowFilters]);
+    if (!activeInfoFilter) return null;
+    return SCANNER_ORDERFLOW_OPTIONS.find(o => o.id === activeInfoFilter);
+  }, [activeInfoFilter]);
 
-  const renderTab = (type: ScannerType, label: string) => {
-    const isSpecial = type === 'rekomendasiBesok';
+  const renderTab = (type: ScannerType, title: string, subtitle?: string) => {
+    const isActive = activeTab === type;
     return (
       <TouchableOpacity
         key={type}
         style={[
-          styles.tab,
-          isSpecial && styles.tabSpecial,
-          activeTab === type && (isSpecial ? styles.tabSpecialActive : styles.tabActive),
+          styles.mainTabBtn,
+          isActive && styles.mainTabBtnActive,
         ]}
         onPress={() => executeScan(type)}
+        activeOpacity={0.8}
       >
-        <Text
-          style={[
-            styles.tabText,
-            isSpecial && styles.tabSpecialText,
-            activeTab === type && styles.tabTextActive,
-          ]}
-        >
-          {label}
+        <Text style={[styles.mainTabTitle, isActive && styles.mainTabTitleActive]}>
+          {title}
         </Text>
+        {subtitle && (
+          <Text style={[styles.mainTabSub, isActive && styles.mainTabSubActive]}>
+            {subtitle}
+          </Text>
+        )}
       </TouchableOpacity>
     );
   };
@@ -199,31 +201,26 @@ export default function ScannersScreen({ navigation }: any) {
   const getBadgeStyle = (text?: string) => {
     if (!text) return { bg: COLORS.surfaceLight, fg: COLORS.textMuted };
     if (
+      text.includes('LOCKED') ||
+      text.includes('DIGEMBOK') ||
       text.includes('HIGH') ||
-      text.includes('HOT') ||
-      text.includes('ARA') ||
-      text.includes('STRONG BUY') ||
       text.includes('TOP PICK') ||
-      text.includes('RECEH POTENSIAL')
+      text.includes('SUPER')
     ) {
       return { bg: '#064E3B', fg: '#34D399' }; // Emerald Green
     }
     if (
-      text.includes('ACCUMULATION') ||
-      text.includes('AKTIF') ||
-      text.includes('BUY') ||
-      text.includes('BANDAR') ||
-      text.includes('SCALP') ||
-      text.includes('SWING')
+      text.includes('POTENSI') ||
+      text.includes('BREAKOUT') ||
+      text.includes('ACCELERATION') ||
+      text.includes('MOMENTUM')
     ) {
       return { bg: '#1E3A8A', fg: '#60A5FA' }; // Blue
     }
     if (
-      text.includes('SPECULATIVE') ||
-      text.includes('WAIT') ||
-      text.includes('NEUTRAL') ||
-      text.includes('CONFIRM') ||
-      text.includes('FCA')
+      text.includes('ENTRY') ||
+      text.includes('EARLY') ||
+      text.includes('WEAKNESS')
     ) {
       return { bg: '#78350F', fg: '#FBBF24' }; // Amber
     }
@@ -232,12 +229,13 @@ export default function ScannersScreen({ navigation }: any) {
 
   const renderItem = (item: AlgoResult, idx: number) => {
     const isUp = item.chgPct >= 0;
-    const badgeText = item.pred || item.status || item.action || '';
+    const badgeText = item.pred || item.status || item.araStage || '';
     const badgeColors = getBadgeStyle(badgeText);
-    const isRekomendasiBesok = activeTab === 'rekomendasiBesok' || !!item.buyArea;
+    const isRekomendasiBesok = activeTab === 'rekomendasiBesok';
+    const isAraHunter = activeTab === 'ara';
 
     return (
-      <View key={`${item.ticker}-${idx}`} style={[styles.resultCard, isRekomendasiBesok && styles.resultCardSpecial]}>
+      <View key={`${item.ticker}-${idx}`} style={[styles.resultCard, (isRekomendasiBesok || item.isLockedAra) && styles.resultCardSpecial]}>
         {/* Card Header: Ticker, Name, Badge, Price */}
         <View style={styles.cardHeader}>
           <View style={styles.tickerGroup}>
@@ -246,6 +244,16 @@ export default function ScannersScreen({ navigation }: any) {
               {isRekomendasiBesok && (
                 <View style={styles.rankPill}>
                   <Text style={styles.rankPillText}>#{idx + 1}</Text>
+                </View>
+              )}
+              {item.isLockedAra && (
+                <View style={styles.lockedHeaderPill}>
+                  <Text style={styles.lockedHeaderPillText}>🔒 ARA LOCKED</Text>
+                </View>
+              )}
+              {item.isOpenEqualsLow && (
+                <View style={styles.olHeaderPill}>
+                  <Text style={styles.olHeaderPillText}>⚡ O = L</Text>
                 </View>
               )}
               <View style={[styles.statusBadge, { backgroundColor: badgeColors.bg }]}>
@@ -263,7 +271,7 @@ export default function ScannersScreen({ navigation }: any) {
         </View>
 
         {/* Katalis & Analisis Bandar (For Rekomendasi Besok) */}
-        {item.catalyst && (
+        {item.catalyst && isRekomendasiBesok && (
           <View style={styles.catalystBox}>
             <Text style={styles.catalystLabel}>💡 Analisis Bandar & Katalis:</Text>
             <Text style={styles.catalystText}>{item.catalyst}</Text>
@@ -295,6 +303,66 @@ export default function ScannersScreen({ navigation }: any) {
                   </TouchableOpacity>
                 );
               })}
+            </View>
+          </View>
+        )}
+
+        {/* KHUSUS ARA HUNTER PRO: METRIK RESMI ARA & JARAK ARA */}
+        {isAraHunter && (
+          <View style={styles.araCardBox}>
+            <View style={styles.tradingPlanRow}>
+              <View style={styles.planCol}>
+                <Text style={styles.planLabel}>Target Harga ARA</Text>
+                <Text style={styles.araTargetPrice}>
+                  {item.araPrice ? formatRupiah(item.araPrice) : '—'}
+                  <Text style={{ fontSize: 11, color: '#34D399', fontWeight: '800' }}> (+{item.maxAraPct}%)</Text>
+                </Text>
+              </View>
+
+              <View style={styles.planCol}>
+                <Text style={styles.planLabel}>Sisa Jarak ke ARA</Text>
+                {item.isLockedAra ? (
+                  <View style={styles.araLockedPill}>
+                    <Text style={styles.araLockedPillText}>🔒 MENTOK ARA</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.araDistanceValue}>
+                    +{item.distanceToAraPct}% <Text style={{ color: '#94A3B8', fontSize: 10 }}>({item.distanceTicks} Tick)</Text>
+                  </Text>
+                )}
+              </View>
+
+              <View style={[styles.planCol, { alignItems: 'flex-end' }]}>
+                <Text style={styles.planLabel}>Karakteristik O=L</Text>
+                {item.isOpenEqualsLow ? (
+                  <View style={styles.olBadgeYes}>
+                    <Text style={styles.olBadgeYesText}>⚡ OPEN = LOW</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.olBadgeNoText}>Open Rp {item.open}</Text>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.tradingPlanDivider} />
+
+            <View style={styles.tradingPlanRow}>
+              <View style={styles.planCol}>
+                <Text style={styles.planLabel}>Stop Loss Proteksi</Text>
+                <Text style={styles.planValueRed}>
+                  {item.stopLoss ? formatRupiah(item.stopLoss) : '—'}
+                </Text>
+              </View>
+              <View style={styles.planCol}>
+                <Text style={styles.planLabel}>Risk / Reward</Text>
+                <Text style={styles.planValueCyan}>{item.riskReward || '1 : 2.5'}</Text>
+              </View>
+              <View style={[styles.planCol, { alignItems: 'flex-end' }]}>
+                <Text style={styles.planLabel}>Fraksi BEI</Text>
+                <Text style={{ color: '#38BDF8', fontSize: 11, fontWeight: '800' }}>
+                  ± Rp {item.tickSize} / tick
+                </Text>
+              </View>
             </View>
           </View>
         )}
@@ -366,29 +434,18 @@ export default function ScannersScreen({ navigation }: any) {
               <Text style={styles.metricValue}>{item.volSpike}x</Text>
             </View>
           )}
-          {item.trend && (
-            <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Tren</Text>
-              <Text
-                style={[
-                  styles.metricValue,
-                  { color: item.trend === 'UPTREND' ? COLORS.success : COLORS.danger },
-                ]}
-              >
-                {item.trend}
-              </Text>
-            </View>
-          )}
           {item.bullPower !== undefined && (
             <View style={styles.metricItem}>
               <Text style={styles.metricLabel}>Bull Power</Text>
               <Text style={styles.metricValue}>{item.bullPower}%</Text>
             </View>
           )}
-          {item.volat !== undefined && (
+          {item.turnoverIdr !== undefined && item.turnoverIdr > 0 && (
             <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Volatilitas</Text>
-              <Text style={styles.metricValue}>{item.volat}%</Text>
+              <Text style={styles.metricLabel}>Turnover</Text>
+              <Text style={styles.metricValue}>
+                Rp {(item.turnoverIdr / 1000000000).toFixed(1)} M
+              </Text>
             </View>
           )}
         </View>
@@ -419,20 +476,69 @@ export default function ScannersScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      {/* 1. Base Scanner Category Tabs */}
+      {/* 1. FOCUS SCREENER TABS: Rekomendasi Besok & ARA Hunter Pro */}
       <View style={styles.tabsContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {renderTab('rekomendasiBesok', '⭐ Rekomendasi Besok')}
-          {renderTab('prediksi', 'Algo Prediksi')}
-          {renderTab('scalping', 'Scalping Intraday')}
-          {renderTab('ara', 'ARA Hunter v3.0')}
-          {renderTab('superEasy', 'Trend Follower')}
-          {renderTab('receh', 'Saham Receh (1-150)')}
-          {renderTab('semua', 'Semua Saham (Master)')}
-        </ScrollView>
+        <View style={styles.mainTabsGrid}>
+          {renderTab(
+            'rekomendasiBesok', 
+            '⭐ Rekomendasi Besok', 
+            'Multi-Metode Kuantitatif + Fraksi BEI'
+          )}
+          {renderTab(
+            'ara', 
+            '🚀 ARA Hunter Pro', 
+            'Semua 935 Saham BEI • Open=Low'
+          )}
+        </View>
       </View>
 
-      {/* 2. THE 8 ORDER FLOW & BANDARMOLOGY OPTIONS (Available in EVERY Scanner) */}
+      {/* ARA Hunter Sub-Filter Selector (Only active when in ARA Hunter tab) */}
+      {activeTab === 'ara' && (
+        <View style={styles.araSubFilterSection}>
+          <Text style={styles.araSubFilterHeader}>
+            🔍 Kategori ARA ({results.length} Saham Terdeteksi dari 935 Emiten BEI):
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.araSubChipsScroll}>
+            <TouchableOpacity 
+              style={[styles.araSubChip, araSubFilter === 'semua' && styles.araSubChipActive]}
+              onPress={() => setAraSubFilter('semua')}
+            >
+              <Text style={[styles.araSubChipText, araSubFilter === 'semua' && styles.araSubChipTextActive]}>
+                🌐 Semua ({araCounts.total})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.araSubChip, araSubFilter === 'open_low' && styles.araSubChipActive]}
+              onPress={() => setAraSubFilter('open_low')}
+            >
+              <Text style={[styles.araSubChipText, araSubFilter === 'open_low' && styles.araSubChipTextActive]}>
+                ⚡ Open = Low ({araCounts.openLow})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.araSubChip, araSubFilter === 'potensi' && styles.araSubChipActive]}
+              onPress={() => setAraSubFilter('potensi')}
+            >
+              <Text style={[styles.araSubChipText, araSubFilter === 'potensi' && styles.araSubChipTextActive]}>
+                🔥 Potensi ARA ({araCounts.potensi})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.araSubChip, araSubFilter === 'locked' && styles.araSubChipActive]}
+              onPress={() => setAraSubFilter('locked')}
+            >
+              <Text style={[styles.araSubChipText, araSubFilter === 'locked' && styles.araSubChipTextActive]}>
+                🔒 Digembok ARA ({araCounts.locked})
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      )}
+
+      {/* 2. THE 8 ORDER FLOW & BANDARMOLOGY OPTIONS */}
       <View style={styles.flowSection}>
         <View style={styles.flowSectionHeader}>
           <View style={styles.flowHeaderLeft}>
@@ -446,10 +552,9 @@ export default function ScannersScreen({ navigation }: any) {
           )}
         </View>
         <Text style={styles.flowSectionSubtitle}>
-          Saring hasil scanner dengan karakteristik transaksi & jejak bandar di bawah ini:
+          Saring hasil scanner dengan karakteristik transaksi & jejak bandar:
         </Text>
 
-        {/* Horizontal Chips for the 8 User Options */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -496,7 +601,7 @@ export default function ScannersScreen({ navigation }: any) {
                     isSelected && { color: '#0F172A', fontWeight: '900' },
                   ]}
                 >
-                  {opt.icon} {opt.label}
+                  {opt.icon} {opt.shortLabel}
                 </Text>
                 <View
                   style={[
@@ -547,7 +652,7 @@ export default function ScannersScreen({ navigation }: any) {
       <View style={styles.filterBar}>
         <TextInput
           style={styles.searchInput}
-          placeholder="Cari kode atau nama saham (cth: BBRI)..."
+          placeholder="Cari kode atau nama saham (cth: BBRI, DEWA)..."
           placeholderTextColor={COLORS.textMuted}
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -555,7 +660,7 @@ export default function ScannersScreen({ navigation }: any) {
         />
         <View style={styles.countBadgeWrap}>
           <Text style={styles.countText}>
-            {loading ? 'Scanning...' : `${filteredResults.length} / ${results.length} Saham`}
+            {loading ? 'Memindai...' : `${filteredResults.length} / ${results.length} Saham`}
           </Text>
         </View>
       </View>
@@ -565,9 +670,9 @@ export default function ScannersScreen({ navigation }: any) {
         <View style={styles.center}>
           <ActivityIndicator size="large" color={COLORS.primary} />
           <Text style={styles.loadingText}>
-            {activeTab === 'rekomendasiBesok'
-              ? 'Menghitung skor multi-metode & rencana trading besok...'
-              : 'Menjalankan scan & menganalisis orderflow...'}
+            {activeTab === 'ara'
+              ? 'Memindai seluruh 935 saham BEI & menghitung jarak ke harga ARA...'
+              : 'Menghitung skor multi-metode & rencana trading besok...'}
           </Text>
         </View>
       ) : (
@@ -587,7 +692,7 @@ export default function ScannersScreen({ navigation }: any) {
               <Text style={styles.emptyTitle}>Tidak ada saham ditemukan</Text>
               <Text style={styles.emptySub}>
                 {selectedFlowFilters.length > 0
-                  ? `Tidak ada emiten di "${activeTab}" yang memenuhi kriteria pilihan order flow terpilih.`
+                  ? 'Tidak ada emiten yang memenuhi kriteria pilihan order flow terpilih.'
                   : searchQuery
                   ? 'Coba ubah kata kunci pencarian.'
                   : 'Kondisi pasar saat ini belum memenuhi kriteria scanner.'}
@@ -630,52 +735,95 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   tabsContainer: {
-    paddingVertical: 10,
-    paddingHorizontal: SIZES.padding / 2,
+    paddingVertical: 12,
+    paddingHorizontal: SIZES.padding,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.08)',
     backgroundColor: COLORS.surface,
   },
-  tab: {
-    paddingHorizontal: 16,
+  mainTabsGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  mainTabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mainTabBtnActive: {
+    backgroundColor: 'rgba(2, 132, 199, 0.2)',
+    borderColor: '#38BDF8',
+    borderWidth: 1.5,
+  },
+  mainTabTitle: {
+    color: '#94A3B8',
+    fontSize: SIZES.font * 0.9,
+    fontWeight: '700',
+  },
+  mainTabTitleActive: {
+    color: '#38BDF8',
+    fontWeight: '900',
+  },
+  mainTabSub: {
+    color: '#64748B',
+    fontSize: 10,
+    marginTop: 2,
+  },
+  mainTabSubActive: {
+    color: '#BAE6FD',
+    fontWeight: '600',
+  },
+
+  // ARA Sub-filter
+  araSubFilterSection: {
+    backgroundColor: '#09121a',
     paddingVertical: 8,
-    borderRadius: 20,
-    marginHorizontal: 4,
+    paddingHorizontal: SIZES.padding,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  araSubFilterHeader: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  araSubChipsScroll: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  araSubChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
   },
-  tabActive: {
-    backgroundColor: 'rgba(2, 132, 199, 0.2)',
+  araSubChipActive: {
+    backgroundColor: '#0284C7',
     borderColor: '#38BDF8',
   },
-  tabSpecial: {
-    backgroundColor: 'rgba(245, 158, 11, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.4)',
-  },
-  tabSpecialActive: {
-    backgroundColor: '#F59E0B',
-    borderColor: '#F59E0B',
-  },
-  tabSpecialText: {
-    color: '#FBBF24',
-    fontWeight: '800',
-  },
-  tabText: {
+  araSubChipText: {
     color: '#94A3B8',
+    fontSize: 11,
     fontWeight: '700',
-    fontSize: SIZES.font * 0.85,
   },
-  tabTextActive: {
-    color: '#38BDF8',
-    fontWeight: '800',
+  araSubChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '900',
   },
 
   // ---------------- 8 ORDER FLOW OPTIONS SECTION ----------------
   flowSection: {
     backgroundColor: '#0c1a24',
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: SIZES.padding,
     borderBottomWidth: 1,
     borderBottomColor: '#1e3345',
@@ -698,27 +846,27 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   flowSectionTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '900',
     color: '#00c8ff',
-    letterSpacing: 1,
+    letterSpacing: 0.8,
   },
   flowSectionSubtitle: {
     fontSize: 11,
     color: '#94a3b8',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   btnResetFilters: {
     backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: '#ef4444',
   },
   btnResetFiltersText: {
     color: '#f87171',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: 'bold',
   },
   flowChipsScroll: {
@@ -731,7 +879,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 6,
     borderRadius: 18,
     backgroundColor: '#1e293b',
     borderWidth: 1,
@@ -744,7 +892,7 @@ const styles = StyleSheet.create({
   },
   flowChipText: {
     color: '#cbd5e1',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
   flowChipTextActive: {
@@ -761,8 +909,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   infoCallout: {
-    marginTop: 10,
-    padding: 10,
+    marginTop: 8,
+    padding: 8,
     borderRadius: 8,
     borderLeftWidth: 4,
   },
@@ -770,22 +918,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 3,
+    marginBottom: 2,
   },
   infoCalloutTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 'bold',
   },
   infoCalloutCount: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#94a3b8',
     fontWeight: '600',
   },
   infoCalloutDesc: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#e2e8f0',
     fontStyle: 'italic',
-    lineHeight: 16,
+    lineHeight: 15,
   },
 
   // ---------------- FILTER / SEARCH BAR ----------------
@@ -793,7 +941,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SIZES.padding,
-    paddingVertical: 10,
+    paddingVertical: 8,
     backgroundColor: COLORS.surface,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
@@ -802,25 +950,25 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
     color: COLORS.text,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: COLORS.border,
-    fontSize: SIZES.font * 0.9,
+    fontSize: SIZES.font * 0.88,
   },
   countBadgeWrap: {
     backgroundColor: '#0f172a',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 6,
-    marginLeft: 10,
+    marginLeft: 8,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
   countText: {
     color: COLORS.primary,
-    fontSize: SIZES.font * 0.8,
+    fontSize: SIZES.font * 0.78,
     fontWeight: 'bold',
   },
 
@@ -829,11 +977,14 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: 60,
   },
   loadingText: {
     color: COLORS.textMuted,
     marginTop: 12,
-    fontSize: SIZES.font * 0.9,
+    fontSize: SIZES.font * 0.88,
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
   resultsContainer: {
     padding: SIZES.padding,
@@ -844,26 +995,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   emptyEmoji: {
-    fontSize: 48,
-    marginBottom: 12,
+    fontSize: 44,
+    marginBottom: 10,
   },
   emptyTitle: {
     color: COLORS.text,
-    fontSize: SIZES.font * 1.1,
+    fontSize: SIZES.font * 1.05,
     fontWeight: 'bold',
   },
   emptySub: {
     color: COLORS.textMuted,
-    fontSize: SIZES.font * 0.85,
+    fontSize: SIZES.font * 0.82,
     marginTop: 6,
     textAlign: 'center',
     lineHeight: 18,
   },
   btnEmptyReset: {
-    marginTop: 14,
+    marginTop: 12,
     backgroundColor: 'rgba(56, 189, 248, 0.12)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: COLORS.primary,
@@ -871,7 +1022,7 @@ const styles = StyleSheet.create({
   btnEmptyResetText: {
     color: COLORS.primary,
     fontWeight: 'bold',
-    fontSize: 12,
+    fontSize: 11,
   },
   resultCard: {
     backgroundColor: '#111827',
@@ -914,11 +1065,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 10,
-    marginRight: 6,
+    marginRight: 4,
   },
   rankPillText: {
     color: '#0f172a',
     fontSize: 10,
+    fontWeight: '900',
+  },
+  lockedHeaderPill: {
+    backgroundColor: '#064E3B',
+    borderColor: '#34D399',
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginRight: 4,
+  },
+  lockedHeaderPillText: {
+    color: '#34D399',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  olHeaderPill: {
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    borderColor: '#38BDF8',
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginRight: 4,
+  },
+  olHeaderPillText: {
+    color: '#38BDF8',
+    fontSize: 9,
     fontWeight: '900',
   },
   stockName: {
@@ -932,7 +1111,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   statusText: {
-    fontSize: SIZES.font * 0.75,
+    fontSize: SIZES.font * 0.72,
     fontWeight: 'bold',
   },
   priceGroup: {
@@ -1003,6 +1182,57 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
+  // ---------------- KHUSUS ARA HUNTER PRO BOX ----------------
+  araCardBox: {
+    backgroundColor: '#08131e',
+    borderRadius: 10,
+    padding: 10,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+  },
+  araTargetPrice: {
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  araDistanceValue: {
+    color: '#38BDF8',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  araLockedPill: {
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    borderColor: '#10B981',
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  araLockedPillText: {
+    color: '#34D399',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  olBadgeYes: {
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    borderColor: '#38BDF8',
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  olBadgeYesText: {
+    color: '#38BDF8',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  olBadgeNoText: {
+    color: '#64748B',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+
   // ---------------- TRADING PLAN GRID (REKOMENDASI BESOK) ----------------
   tradingPlanContainer: {
     backgroundColor: '#0b1620',
@@ -1063,12 +1293,12 @@ const styles = StyleSheet.create({
   },
   metricLabel: {
     color: COLORS.textMuted,
-    fontSize: SIZES.font * 0.75,
+    fontSize: SIZES.font * 0.72,
     marginBottom: 2,
   },
   metricValue: {
     color: COLORS.text,
-    fontSize: SIZES.font * 0.85,
+    fontSize: SIZES.font * 0.82,
     fontWeight: 'bold',
   },
   btnAction: {
