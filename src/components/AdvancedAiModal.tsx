@@ -19,6 +19,7 @@ import {
   getGeminiApiKey,
   saveGeminiApiKey,
   getServerKeyStatus,
+  generateClientFallbackAnalysis,
 } from '../utils/geminiAnalysis';
 import { fetchFinmorphFlow, FinmorphFlowResponse } from '../utils/finmorph';
 
@@ -33,6 +34,61 @@ interface AdvancedAiModalProps {
 }
 
 type SubTab = 'aiScore' | 'smartMoney' | 'sentiment' | 'fundamentals' | 'tradingView' | 'seasonality';
+
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  onClose: () => void;
+}
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+class ModalErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error('[AdvancedAiModal] Render Error Caught:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 24,
+          backgroundColor: '#0F172A',
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+          height: '92%',
+        }}>
+          <Text style={{ fontSize: 36, marginBottom: 12 }}>⚠️</Text>
+          <Text style={{ fontSize: 18, fontWeight: '800', color: '#F8FAFC', marginBottom: 8, textAlign: 'center' }}>
+            Gagal Memuat Analisa Saham
+          </Text>
+          <Text style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center', marginBottom: 20, maxWidth: 400 }}>
+            {this.state.error?.message || 'Terjadi kesalahan sistem saat merender data.'}
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: '#0284C7', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10 }}
+            onPress={() => {
+              this.setState({ hasError: false, error: null });
+              this.props.onClose();
+            }}
+          >
+            <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 13 }}>Tutup Analisa</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function AdvancedAiModal({
   visible,
@@ -52,18 +108,26 @@ export default function AdvancedAiModal({
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [savedKeyExists, setSavedKeyExists] = useState(false);
-  const [serverKeyInfo, setServerKeyInfo] = useState<{ hasKey: boolean; keyMasked: string; source: string } | null>(null);
+  const [serverKeyInfo, setServerKeyInfo] = useState<{ hasKey: boolean; keyMasked: string; source: string }>({
+    hasKey: false,
+    keyMasked: '',
+    source: 'Gemini Quant Engine',
+  });
 
   useEffect(() => {
     if (visible && ticker) {
+      const clean = (ticker || 'BBCA').toUpperCase().replace('.JK', '').trim();
+      setData(prev => (prev && prev.symbol === clean) ? prev : generateClientFallbackAnalysis(clean, currentPrice, currentChangePct));
       loadAnalysis();
     }
-  }, [visible, ticker]);
+  }, [visible, ticker, currentPrice, currentChangePct]);
 
   useEffect(() => {
     getServerKeyStatus().then(info => {
-      setServerKeyInfo(info);
-      setSavedKeyExists(info.hasKey);
+      if (info) {
+        setServerKeyInfo(info);
+        setSavedKeyExists(info.hasKey);
+      }
     });
   }, [showKeyModal, visible]);
 
@@ -71,14 +135,18 @@ export default function AdvancedAiModal({
     setLoading(true);
     try {
       getServerKeyStatus().then(info => {
-        setServerKeyInfo(info);
-        if (info.hasKey) setSavedKeyExists(true);
+        if (info) {
+          setServerKeyInfo(info);
+          if (info.hasKey) setSavedKeyExists(true);
+        }
       });
       const [res, flowRes] = await Promise.all([
         fetchCompleteAiAnalysis(ticker, currentPrice, currentChangePct),
         fetchFinmorphFlow(ticker),
       ]);
-      setData(res);
+      if (res && res.geminiResult) {
+        setData(res);
+      }
       setFinmorphFlow(flowRes || res?.finmorphFlow || null);
     } catch (e) {
       console.error('[AdvancedAiModal] Error fetching analysis:', e);
@@ -91,8 +159,10 @@ export default function AdvancedAiModal({
       await saveGeminiApiKey(apiKeyInput.trim());
     }
     const info = await getServerKeyStatus();
-    setServerKeyInfo(info);
-    setSavedKeyExists(info.hasKey || !!apiKeyInput.trim());
+    if (info) {
+      setServerKeyInfo(info);
+      setSavedKeyExists(info.hasKey || !!apiKeyInput.trim());
+    }
     setApiKeyInput('');
     setShowKeyModal(false);
     // Reload analysis immediately with newly planted key
@@ -102,14 +172,15 @@ export default function AdvancedAiModal({
   if (!visible) return null;
 
   const cleanTicker = (ticker || 'BBCA').toUpperCase().replace('.JK', '').trim();
-  const price = data?.price || currentPrice || 0;
-  const changePct = data?.changePct !== undefined ? data.changePct : currentChangePct;
+  const activeData = data || generateClientFallbackAnalysis(cleanTicker, currentPrice, currentChangePct);
+  const price = activeData?.price || currentPrice || 0;
+  const changePct = activeData?.changePct !== undefined ? activeData.changePct : currentChangePct;
   const isUp = changePct >= 0;
 
-  const ai = data?.geminiResult;
-  const ratios = data?.ratios;
-  const news = data?.news;
-  const seasonality = data?.seasonality;
+  const ai = activeData?.geminiResult;
+  const ratios = activeData?.ratios;
+  const news = activeData?.news;
+  const seasonality = activeData?.seasonality;
 
   // TradingView Widget URL enriched with Volume, Moving Averages, RSI & MACD
   const tvStudiesEncoded = encodeURIComponent(JSON.stringify([
@@ -187,7 +258,8 @@ export default function AdvancedAiModal({
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
+        <ModalErrorBoundary onClose={onClose}>
+          <View style={styles.modalContent}>
           {/* Header */}
           <View style={styles.modalHeader}>
             <View style={styles.headerLeft}>
@@ -224,12 +296,12 @@ export default function AdvancedAiModal({
           <TouchableOpacity
             style={[
               styles.sourceBanner,
-              (serverKeyInfo.hasKey || savedKeyExists) ? styles.sourceBannerGreen : styles.sourceBannerPrompt,
+              (serverKeyInfo?.hasKey || savedKeyExists) ? styles.sourceBannerGreen : styles.sourceBannerPrompt,
             ]}
             onPress={() => setShowKeyModal(true)}
             activeOpacity={0.8}
           >
-            {(serverKeyInfo.hasKey || savedKeyExists) ? (
+            {(serverKeyInfo?.hasKey || savedKeyExists) ? (
               <Text style={styles.sourceTextGreen}>
                 🟢 <Text style={{ fontWeight: '900', color: '#34D399' }}>Google Gemini AI Cloud Aktif</Text> · Status: Terhubung Aman ➔
               </Text>
@@ -528,7 +600,7 @@ export default function AdvancedAiModal({
               {activeTab === 'smartMoney' && (
                 <View style={styles.sectionContainer}>
                   {/* LIVE FINMORPH SMART MONEY FLOW (IF AVAILABLE) */}
-                  {finmorphFlow?.flow && (
+                  {finmorphFlow?.flow && finmorphFlow.flow.signals && (
                     <View style={styles.finmorphFlowCardAi}>
                       <View style={styles.finmorphFlowHeaderAi}>
                         <View>
@@ -551,10 +623,10 @@ export default function AdvancedAiModal({
                             styles.verdictTextAi, 
                             { color: finmorphFlow.flow.verdict === 'akumulasi' ? '#10B981' : (finmorphFlow.flow.verdict === 'distribusi' ? '#EF4444' : '#F59E0B') }
                           ]}>
-                            {finmorphFlow.flow.label.toUpperCase()}
+                            {(finmorphFlow.flow.label || 'NETRAL').toUpperCase()}
                           </Text>
                           <Text style={styles.verdictGradeAi}>
-                            Grade {finmorphFlow.flow.grade.toUpperCase()} (Skor: {finmorphFlow.flow.score > 0 ? '+' : ''}{finmorphFlow.flow.score})
+                            Grade {(finmorphFlow.flow.grade || 'B').toUpperCase()} (Skor: {finmorphFlow.flow.score > 0 ? '+' : ''}{finmorphFlow.flow.score})
                           </Text>
                         </View>
                       </View>
@@ -563,41 +635,41 @@ export default function AdvancedAiModal({
                       <View style={styles.signalsGridAi}>
                         <View style={styles.signalBoxAi}>
                           <Text style={styles.signalLabelAi}>CMF (20D)</Text>
-                          <Text style={[styles.signalValAi, { color: finmorphFlow.flow.signals.cmf >= 0 ? '#10B981' : '#EF4444' }]}>
-                            {finmorphFlow.flow.signals.cmf > 0 ? '+' : ''}{finmorphFlow.flow.signals.cmf}
+                          <Text style={[styles.signalValAi, { color: (finmorphFlow.flow.signals.cmf || 0) >= 0 ? '#10B981' : '#EF4444' }]}>
+                            {(finmorphFlow.flow.signals.cmf || 0) > 0 ? '+' : ''}{finmorphFlow.flow.signals.cmf || 0}
                           </Text>
                           <Text style={styles.signalDescAi}>
-                            {finmorphFlow.flow.signals.cmf > 0.05 ? 'Inflow Kuat' : (finmorphFlow.flow.signals.cmf < -0.05 ? 'Outflow Kuat' : 'Netral')}
+                            {(finmorphFlow.flow.signals.cmf || 0) > 0.05 ? 'Inflow Kuat' : ((finmorphFlow.flow.signals.cmf || 0) < -0.05 ? 'Outflow Kuat' : 'Netral')}
                           </Text>
                         </View>
 
                         <View style={styles.signalBoxAi}>
                           <Text style={styles.signalLabelAi}>MFI (14D)</Text>
-                          <Text style={[styles.signalValAi, { color: finmorphFlow.flow.signals.mfi >= 50 ? '#10B981' : '#F59E0B' }]}>
-                            {finmorphFlow.flow.signals.mfi}
+                          <Text style={[styles.signalValAi, { color: (finmorphFlow.flow.signals.mfi || 50) >= 50 ? '#10B981' : '#F59E0B' }]}>
+                            {finmorphFlow.flow.signals.mfi || 50}
                           </Text>
                           <Text style={styles.signalDescAi}>
-                            {finmorphFlow.flow.signals.mfi > 80 ? 'Overbought' : (finmorphFlow.flow.signals.mfi < 20 ? 'Oversold' : 'Sehat')}
+                            {(finmorphFlow.flow.signals.mfi || 50) > 80 ? 'Overbought' : ((finmorphFlow.flow.signals.mfi || 50) < 20 ? 'Oversold' : 'Sehat')}
                           </Text>
                         </View>
 
                         <View style={styles.signalBoxAi}>
                           <Text style={styles.signalLabelAi}>Arah OBV</Text>
-                          <Text style={[styles.signalValAi, { color: finmorphFlow.flow.signals.obv.direction === 'naik' ? '#10B981' : '#EF4444' }]}>
-                            {finmorphFlow.flow.signals.obv.direction.toUpperCase()}
+                          <Text style={[styles.signalValAi, { color: finmorphFlow.flow.signals.obv?.direction === 'naik' ? '#10B981' : '#EF4444' }]}>
+                            {(finmorphFlow.flow.signals.obv?.direction || 'NETRAL').toUpperCase()}
                           </Text>
                           <Text style={styles.signalDescAi}>
-                            Bias: {finmorphFlow.flow.signals.obv.bias > 0 ? '+' : ''}{finmorphFlow.flow.signals.obv.bias}
+                            Bias: {(finmorphFlow.flow.signals.obv?.bias || 0) > 0 ? '+' : ''}{finmorphFlow.flow.signals.obv?.bias || 0}
                           </Text>
                         </View>
 
                         <View style={styles.signalBoxAi}>
                           <Text style={styles.signalLabelAi}>Up/Down Vol</Text>
-                          <Text style={[styles.signalValAi, { color: finmorphFlow.flow.signals.up_down.ratio >= 1 ? '#10B981' : '#EF4444' }]}>
-                            {finmorphFlow.flow.signals.up_down.ratio}x
+                          <Text style={[styles.signalValAi, { color: (finmorphFlow.flow.signals.up_down?.ratio || 1) >= 1 ? '#10B981' : '#EF4444' }]}>
+                            {finmorphFlow.flow.signals.up_down?.ratio || 1}x
                           </Text>
                           <Text style={styles.signalDescAi}>
-                            {finmorphFlow.flow.signals.up_down.ratio >= 1.2 ? 'Buyer Dominan' : (finmorphFlow.flow.signals.up_down.ratio <= 0.8 ? 'Seller Dominan' : 'Seimbang')}
+                            {(finmorphFlow.flow.signals.up_down?.ratio || 1) >= 1.2 ? 'Buyer Dominan' : ((finmorphFlow.flow.signals.up_down?.ratio || 1) <= 0.8 ? 'Seller Dominan' : 'Seimbang')}
                           </Text>
                         </View>
                       </View>
@@ -1082,70 +1154,66 @@ export default function AdvancedAiModal({
               <Text style={styles.btnCloseBottomText}>Tutup Analisa Lanjutan</Text>
             </TouchableOpacity>
           </View>
-        </View>
 
-        {/* Mini Dialog: Configure Gemini API Key */}
-        <Modal
-          visible={showKeyModal}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => setShowKeyModal(false)}
-        >
-          <View style={styles.keyModalOverlay}>
-            <View style={styles.keyModalBox}>
-              <Text style={styles.keyModalTitle}>🔑 Pengaturan Gemini API Key</Text>
-              <Text style={styles.keyModalSubtitle}>
-                Key disimpan secara aman di server. Karakter API key disembunyikan untuk menjaga privasi Anda.
-              </Text>
-
-              <View style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                padding: 10,
-                borderRadius: 8,
-                marginBottom: 12,
-                borderWidth: 1,
-                borderColor: 'rgba(255, 255, 255, 0.08)'
-              }}>
-                <Text style={{ fontSize: 12, color: '#94A3B8' }}>
-                  Status Saat Ini:{' '}
-                  <Text style={{ fontWeight: '800', color: (serverKeyInfo.hasKey || savedKeyExists) ? '#34D399' : '#F59E0B' }}>
-                    {(serverKeyInfo.hasKey || savedKeyExists) ? '✅ API Key Terpasang (Aman)' : '⚠️ Belum Ada Key Terpasang'}
-                  </Text>
+          {/* Mini Dialog: Configure Gemini API Key */}
+          {showKeyModal && (
+            <View style={styles.keyModalOverlay}>
+              <View style={styles.keyModalBox}>
+                <Text style={styles.keyModalTitle}>🔑 Pengaturan Gemini API Key</Text>
+                <Text style={styles.keyModalSubtitle}>
+                  Key disimpan secara aman di server. Karakter API key disembunyikan untuk menjaga privasi Anda.
                 </Text>
-              </View>
 
-              <TextInput
-                style={styles.keyInput}
-                placeholder={(serverKeyInfo.hasKey || savedKeyExists) ? "Masukkan key baru jika ingin mengganti" : "Paste API Key Anda di sini"}
-                placeholderTextColor="#64748B"
-                value={apiKeyInput}
-                onChangeText={setApiKeyInput}
-                autoCapitalize="none"
-                autoCorrect={false}
-                secureTextEntry={true}
-              />
+                <View style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                  padding: 10,
+                  borderRadius: 8,
+                  marginBottom: 12,
+                  borderWidth: 1,
+                  borderColor: 'rgba(255, 255, 255, 0.08)'
+                }}>
+                  <Text style={{ fontSize: 12, color: '#94A3B8' }}>
+                    Status Saat Ini:{' '}
+                    <Text style={{ fontWeight: '800', color: (serverKeyInfo?.hasKey || savedKeyExists) ? '#34D399' : '#F59E0B' }}>
+                      {(serverKeyInfo?.hasKey || savedKeyExists) ? '✅ API Key Terpasang (Aman)' : '⚠️ Belum Ada Key Terpasang'}
+                    </Text>
+                  </Text>
+                </View>
 
-              <View style={styles.keyBtnRow}>
-                <TouchableOpacity
-                  style={styles.btnKeyCancel}
-                  onPress={() => {
-                    setApiKeyInput('');
-                    setShowKeyModal(false);
-                  }}
-                >
-                  <Text style={styles.btnKeyCancelText}>Tutup</Text>
-                </TouchableOpacity>
+                <TextInput
+                  style={styles.keyInput}
+                  placeholder={(serverKeyInfo?.hasKey || savedKeyExists) ? "Masukkan key baru jika ingin mengganti" : "Paste API Key Anda di sini"}
+                  placeholderTextColor="#64748B"
+                  value={apiKeyInput}
+                  onChangeText={setApiKeyInput}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  secureTextEntry={true}
+                />
 
-                <TouchableOpacity style={styles.btnKeySave} onPress={handleSaveApiKey}>
-                  <Text style={styles.btnKeySaveText}>Simpan Aman 🔒</Text>
-                </TouchableOpacity>
+                <View style={styles.keyBtnRow}>
+                  <TouchableOpacity
+                    style={styles.btnKeyCancel}
+                    onPress={() => {
+                      setApiKeyInput('');
+                      setShowKeyModal(false);
+                    }}
+                  >
+                    <Text style={styles.btnKeyCancelText}>Tutup</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.btnKeySave} onPress={handleSaveApiKey}>
+                    <Text style={styles.btnKeySaveText}>Simpan Aman 🔒</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
-        </Modal>
-      </View>
-    </Modal>
-  );
+          )}
+        </View>
+      </ModalErrorBoundary>
+    </View>
+  </Modal>
+);
 }
 
 const styles = StyleSheet.create({
@@ -1153,12 +1221,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(2, 6, 23, 0.85)',
     justifyContent: 'flex-end',
+    width: '100%',
+    height: '100%',
+    ...(Platform.OS === 'web' ? {
+      position: 'fixed' as any,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      width: '100vw' as any,
+      height: '100vh' as any,
+      zIndex: 99999,
+    } : {}),
   },
   modalContent: {
     backgroundColor: '#0F172A',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    height: '92%',
+    height: Platform.OS === 'web' ? '92vh' : '92%',
+    maxHeight: Platform.OS === 'web' ? '92vh' : '92%',
+    width: '100%',
+    maxWidth: 960,
+    alignSelf: 'center',
     display: 'flex',
     flexDirection: 'column',
     borderColor: '#334155',
