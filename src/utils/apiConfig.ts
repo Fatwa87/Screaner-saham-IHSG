@@ -4,7 +4,7 @@ import axios from 'axios';
 
 // Current Wi-Fi IPv4 address of this machine
 export const DEV_MACHINE_IP = '192.168.8.100';
-export const DEV_PORT = 3000;
+export const DEV_PORT = 3001;
 
 // Preset server options for quick switching
 export const SERVER_PRESETS = [
@@ -18,13 +18,13 @@ export const SERVER_PRESETS = [
     id: 'local_wifi',
     name: '💻 Laptop / Wi-Fi Lokal',
     url: `http://${DEV_MACHINE_IP}:${DEV_PORT}`,
-    desc: 'Langsung terhubung ke server proxy di laptop (Port 3000)',
+    desc: 'Langsung terhubung ke server proxy di laptop (Port 3001)',
   },
   {
     id: 'localhost',
     name: '🖥️ Localhost (Browser PC)',
     url: `http://localhost:${DEV_PORT}`,
-    desc: 'Untuk browser di laptop yang sama',
+    desc: 'Untuk browser di laptop yang sama (Port 3001)',
   },
   {
     id: 'render_cloud',

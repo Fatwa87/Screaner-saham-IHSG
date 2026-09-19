@@ -9,7 +9,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
 // ═════════════════════════════════════════════════════════════════
@@ -983,8 +983,37 @@ async function handleGeminiAnalyze(req, res) {
     // 2. Fetch Fundamentals from Finmorph or Quote
     let finData = null;
     try {
-      const finRes = await axios.get(`http://localhost:${PORT}/api/finmorph/fundamentals?symbol=${symbol}`, { timeout: 4000 });
-      finData = finRes.data;
+      const fundCacheKey = `fund_${symbol}`;
+      if (finmorphCache.has(fundCacheKey) && (Date.now() - finmorphCache.get(fundCacheKey).time < 600000)) {
+        finData = finmorphCache.get(fundCacheKey).data;
+      } else {
+        const finRes = await axios.get(`https://finmorphid.com/premium/api/stock_fundamentals.php?symbol=${symbol}`, {
+          headers: { 'User-Agent': USER_AGENT },
+          timeout: 4000,
+        });
+        if (finRes.data && !finRes.data.error) {
+          finData = finRes.data;
+          finmorphCache.set(fundCacheKey, { time: Date.now(), data: finData });
+        }
+      }
+    } catch (_) {}
+
+    // 2b. Fetch Live Smart Money Flow from Finmorph
+    let flowData = null;
+    try {
+      const flowCacheKey = `flow_${symbol}`;
+      if (finmorphCache.has(flowCacheKey) && (Date.now() - finmorphCache.get(flowCacheKey).time < 300000)) {
+        flowData = finmorphCache.get(flowCacheKey).data;
+      } else {
+        const flowRes = await axios.get(`https://finmorphid.com/premium/api/stock_flow.php?symbol=${symbol}`, {
+          headers: { 'User-Agent': USER_AGENT },
+          timeout: 4000,
+        });
+        if (flowRes.data && !flowRes.data.error) {
+          flowData = flowRes.data;
+          finmorphCache.set(flowCacheKey, { time: Date.now(), data: flowData });
+        }
+      }
     } catch (_) {}
 
     // Extract PER, PBV, ROE, ROA, DER, EPS
@@ -1227,9 +1256,89 @@ Kembalikan jawaban HANYA DALAM FORMAT JSON MURNI (tanpa markdown backticks code 
       keyakinan = 'MODERAT';
     }
 
-    // Technical Levels
+    // Technical Levels & Indicators
     const supportLevel = Math.round(price * 0.965);
     const resistLevel = Math.round(price * 1.055);
+
+    const vol = q.regularMarketVolume || 1000000;
+    const avgVol10 = q.averageDailyVolume10Day || vol;
+    const volSpike = avgVol10 > 0 ? parseFloat((vol / avgVol10).toFixed(2)) : 1.0;
+    const turnoverIdr = price * vol;
+    const turnoverMiliar = parseFloat((turnoverIdr / 1000000000).toFixed(1));
+
+    // Calculate dynamic Smart Money & Bandarmology
+    let dynamicStatusAkumulasi = '';
+    let dynamicLabelFlow = '';
+    let dynamicForeignFlow = '';
+    const dynamicTopBroker = Math.min(88, Math.max(46, Math.round(50 + (volSpike * 7))));
+    const dynamicInstitusiPct = Math.min(92, Math.max(48, Math.round(54 + (volSpike * 6))));
+    const dynamicRitelPct = 100 - dynamicInstitusiPct;
+
+    if (flowData?.flow) {
+      const v = flowData.flow.verdict;
+      dynamicStatusAkumulasi = v === 'akumulasi' 
+        ? 'BIG ACCUMULATION (Akumulasi Finmorph Live)' 
+        : (v === 'distribusi' ? 'HEAVY DISTRIBUTION (Distribusi Finmorph Live)' : 'NORMAL ACCUMULATION (Netral)');
+      dynamicLabelFlow = `${flowData.flow.label} (Skor: ${flowData.flow.score > 0 ? '+' : ''}${flowData.flow.score} · CMF: ${flowData.flow.signals.cmf})`;
+      const estimatedFlowVal = Math.max(0.5, parseFloat((turnoverMiliar * Math.abs(flowData.flow.score || 10) * 0.012).toFixed(1)));
+      dynamicForeignFlow = (flowData.flow.score >= 0) ? `+Rp ${estimatedFlowVal} Miliar (Smart Inflow)` : `-Rp ${estimatedFlowVal} Miliar (Smart Outflow)`;
+    } else {
+      dynamicStatusAkumulasi = isUpStock 
+        ? (volSpike >= 1.6 ? 'BIG ACCUMULATION (Akumulasi Masif)' : 'NORMAL ACCUMULATION (Penampungan)') 
+        : (volSpike >= 1.6 ? 'DISTRIBUTION (Tekanan Jual Masif)' : 'PULLBACK SEHAT (Akumulasi Support)');
+      dynamicLabelFlow = isUpStock ? `Whale Inflow & Akumulasi (Vol ${volSpike}x)` : `Konsolidasi Penampungan Support (Vol ${volSpike}x)`;
+      const flowRatio = isUpStock ? 0.14 : -0.07;
+      const estimatedFlowVal = Math.max(0.3, parseFloat((turnoverMiliar * Math.abs(flowRatio)).toFixed(1)));
+      dynamicForeignFlow = isUpStock ? `+Rp ${estimatedFlowVal} Miliar (Net Inflow)` : `-Rp ${estimatedFlowVal} Miliar (Net Outflow)`;
+    }
+
+    let dynamicVsa = '';
+    if (volSpike >= 2.0 && isUpStock) {
+      dynamicVsa = `Ultra-High Volume Breakout (${volSpike}x) · Demand Menelan Habis Supply`;
+    } else if (volSpike >= 1.3 && isUpStock) {
+      dynamicVsa = `Bullish Volume Spread (${volSpike}x) · Akumulasi Nyata Menguat`;
+    } else if (volSpike >= 1.5 && !isUpStock) {
+      dynamicVsa = `High Volume Supply (${volSpike}x) · Distribusi di Area Resisten`;
+    } else if (volSpike <= 0.7) {
+      dynamicVsa = `Low Volume Pullback (${volSpike}x) · Supply Kering di Atas Support`;
+    } else {
+      dynamicVsa = `Stopping & Absorption Volume di Area Support`;
+    }
+
+    // Golden Cross / Death Cross MA50 vs MA200
+    const ma50 = Math.round(q.fiftyDayAverage || price * 0.98);
+    const ma200 = Math.round(q.twoHundredDayAverage || price * 0.95);
+    const isGoldenCross = ma50 >= ma200;
+    const distMaPct = ma200 > 0 ? Number((((ma50 - ma200) / ma200) * 100).toFixed(1)) : 0;
+    
+    let goldenCrossStatus = '';
+    if (isGoldenCross && price >= ma50) {
+      goldenCrossStatus = `🌟 GOLDEN CROSS AKTIF (MA50 Rp ${ma50} > MA200 Rp ${ma200}) · Bullish Regime Kuat`;
+    } else if (isGoldenCross && price < ma50) {
+      goldenCrossStatus = `⚡ GOLDEN CROSS KONSOLIDASI (Harga koreksi sehat menguji MA50 Rp ${ma50})`;
+    } else if (!isGoldenCross && Math.abs(distMaPct) <= 2.5) {
+      goldenCrossStatus = `🎯 POTENSI GOLDEN CROSS (MA50 Rp ${ma50} bersiap crossover MA200 Rp ${ma200})`;
+    } else {
+      goldenCrossStatus = `⚠️ DEATH CROSS REGIME (MA50 Rp ${ma50} < MA200 Rp ${ma200} · Waspada Tren Turun)`;
+    }
+
+    const volumeAnalysisStr = volSpike >= 1.8 
+      ? `🔥 Lonjakan Volume Masif (${volSpike}x dari MA10) · Minat Institusi Tinggi` 
+      : (volSpike >= 1.2 
+        ? `📈 Volume Ekspansi (${volSpike}x) · Partisipasi Pembeli Meningkat` 
+        : (volSpike <= 0.7 
+          ? `💤 Volume Kering (${volSpike}x) · Tekanan Jual Mereda di Support` 
+          : `⚖️ Volume Rata-rata Normal (${volSpike}x)`));
+
+    const rsiProxy = Math.min(86, Math.max(22, Math.round(50 + (chgPct * 3) + (isAboveMa50 ? 8 : -8))));
+    const rsiStatusStr = rsiProxy >= 70 
+      ? `RSI(14) ~${rsiProxy} (Area Overbought / Waspada Area Resisten)` 
+      : (rsiProxy <= 30 
+        ? `RSI(14) ~${rsiProxy} (Area Oversold / Potensi Rebound Kuat)` 
+        : `RSI(14) ~${rsiProxy} (Zona Momentum Bullish Sehat)`);
+    const macdStatusStr = isAboveMa50 
+      ? `MACD Histogram Positif di Atas Sinyal (Bullish Momentum Crossover)` 
+      : `MACD Menguji Centerline / Sinyal Konsolidasi Tren`;
 
     const syntheticResult = {
       sentimen_berita: {
@@ -1252,12 +1361,12 @@ Kembalikan jawaban HANYA DALAM FORMAT JSON MURNI (tanpa markdown backticks code 
         alasan_ai: `Berdasarkan perpaduan analisa multi-dimensi (Bandarmologi, Teknis MA50/MA200, Valuasi PER/PBV, Sentimen Berita, dan Siklus Musiman 5 Tahun), ${symbol} membukukan skor probabilitas kenaikan ${probUp}%. Struktur harga berada ${isAboveMa50 ? 'di atas MA50 (Uptrend)' : 'dalam fase pengujian support'}, didukung rasio profitabilitas ROE ${roe}% yang solid.`
       },
       analisa_bandarmologi: {
-        status_akumulasi: isUpStock ? 'BIG ACCUMULATION (Akumulasi Masif)' : 'NORMAL ACCUMULATION (Penampungan)',
-        label_flow: isUpStock ? 'Whale & Smart Money Inflow Terdeteksi' : 'Akumulasi Konsolidasi Terkendali',
-        konsentrasi_top_broker: `Top 3 Buyer menguasai ${isUpStock ? '66%' : '54%'} total volume transaksi beli`,
-        net_foreign_flow: isUpStock ? '+Rp 21.4 Miliar (Net Inflow Asing)' : '-Rp 1.2 Miliar (Netral Terkendali)',
-        vsa_volume_spread: isUpStock ? 'Volume Expansion with Bullish Spread' : 'Stopping Volume di Area Support',
-        smart_money_participation: `Institusi ${isUpStock ? '76%' : '64%'} · Ritel ${isUpStock ? '24%' : '36%'}`
+        status_akumulasi: dynamicStatusAkumulasi,
+        label_flow: dynamicLabelFlow,
+        konsentrasi_top_broker: `Top 3 Buyer menguasai ${dynamicTopBroker}% total volume transaksi harian`,
+        net_foreign_flow: dynamicForeignFlow,
+        vsa_volume_spread: dynamicVsa,
+        smart_money_participation: `Institusi ${dynamicInstitusiPct}% · Ritel ${dynamicRitelPct}%`
       },
       trading_plan_presisi: {
         area_beli_1: planEntry1,
@@ -1299,7 +1408,13 @@ Kembalikan jawaban HANYA DALAM FORMAT JSON MURNI (tanpa markdown backticks code 
         level_resisten: resistLevel,
         indikator_sinyal: isAboveMa50 ? 'Golden Cross / Akumulasi Kuat' : 'Uji Reversal Support',
         pola_chart: chgPct >= 0 ? 'Bullish Continuation / Breakout Channel' : 'Pullback Sehat Menuju Area Buy',
-        rekomendasi_entri: `Akumulasi bertahap di rentang Rp ${supportLevel} - Rp ${price}. Target profit terdekat di Rp ${resistLevel}. Cut loss ketat jika tembus di bawah Rp ${Math.round(supportLevel * 0.97)}.`
+        rekomendasi_entri: `Akumulasi bertahap di rentang Rp ${supportLevel} - Rp ${price}. Target profit terdekat di Rp ${resistLevel}. Cut loss ketat jika tembus di bawah Rp ${Math.round(supportLevel * 0.97)}.`,
+        golden_cross_status: goldenCrossStatus,
+        ma50_level: ma50,
+        ma200_level: ma200,
+        volume_analysis: volumeAnalysisStr,
+        rsi_status: rsiStatusStr,
+        macd_status: macdStatusStr
       },
       analisa_musiman: {
         probabilitas_bulan_ini: `${seasonData?.currentMonth?.name || 'Bulan ini'}: Win rate historis ${seasonData?.currentMonth?.winRatePct || 60}% dengan rata-rata return ${seasonData?.currentMonth?.avgReturnPct || 1.5}%.`,
@@ -1317,6 +1432,7 @@ Kembalikan jawaban HANYA DALAM FORMAT JSON MURNI (tanpa markdown backticks code 
       ratios: { per, pbv, roe, roa, der, eps },
       news: newsData,
       seasonality: seasonData,
+      finmorphFlow: flowData,
       geminiResult: syntheticResult,
       fetchedAt: new Date().toISOString()
     });

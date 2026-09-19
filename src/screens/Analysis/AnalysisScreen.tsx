@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Platform, Linking } from 'react-native';
 import { COLORS, SIZES } from '../../constants/theme';
 import { fetchQuotes, fetchHistory, YFQuote } from '../../utils/yfinance';
 import { formatPercent, formatRupiah, formatX, formatVolume } from '../../utils/formatters';
@@ -33,7 +33,7 @@ import ErrorBoundary from '../../components/ErrorBoundary';
 
 const QUICK_PICKS = ['BBCA', 'BBRI', 'BMRI', 'TLKM', 'ASII', 'GOTO', 'PANI', 'BREN'];
 
-type TabType = 'smart_money' | 'fundamental' | 'levels' | 'calculator' | 'thematic';
+type TabType = 'smart_money' | 'fundamental' | 'levels' | 'tradingview' | 'calculator' | 'thematic';
 
 export default function AnalysisScreen({ route }: any) {
   const [ticker, setTicker] = useState(route?.params?.ticker || 'BBCA');
@@ -292,6 +292,15 @@ export default function AnalysisScreen({ route }: any) {
               >
                 <Text style={[styles.subTabText, activeTab === 'levels' && styles.subTabTextActive]}>
                   📐 Level Pivot & VWAP
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.subTab, activeTab === 'tradingview' && styles.subTabActive]}
+                onPress={() => setActiveTab('tradingview')}
+              >
+                <Text style={[styles.subTabText, activeTab === 'tradingview' && styles.subTabTextActive]}>
+                  📈 Chart & Golden Cross
                 </Text>
               </TouchableOpacity>
 
@@ -1055,6 +1064,118 @@ export default function AnalysisScreen({ route }: any) {
                     </View>
                   )
                 )}
+              </View>
+            </View>
+          )}
+
+          {/* ═════════════════════════════════════════════════════════════════ */}
+          {/* TAB: 📈 CHART TRADINGVIEW & ANALISA GOLDEN CROSS / VOLUME         */}
+          {/* ═════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'tradingview' && (
+            <View>
+              {/* TradingView Web Embed */}
+              <View style={styles.cardContainer}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <Text style={styles.sectionTitle}>📈 TradingView Interactive Chart</Text>
+                  <Text style={styles.finmorphPlatformBadge}>LIVE IDX FEED</Text>
+                </View>
+                <Text style={[styles.fundScoreSub, { marginBottom: 12 }]}>
+                  Dilengkapi indikator Volume, Simple Moving Average, RSI & MACD
+                </Text>
+                {Platform.OS === 'web' ? (
+                  <iframe
+                    src={`https://s.tradingview.com/widgetembed/?symbol=IDX%3A${quote.symbol.replace('.JK', '')}&interval=D&theme=dark&style=1&timezone=Asia%2FJakarta&locale=id&toolbarbg=0f172a&studies=%5B%22Volume%40tv-basicstudies%22%2C%22MASimple%40tv-basicstudies%22%2C%22RSI%40tv-basicstudies%22%2C%22MACD%40tv-basicstudies%22%5D&hide_side_toolbar=0&allow_symbol_change=1&save_image=1`}
+                    style={{
+                      width: '100%',
+                      height: '420px',
+                      border: 'none',
+                      borderRadius: 12,
+                      backgroundColor: '#0F172A',
+                    }}
+                    title={`TradingView Chart ${quote.symbol}`}
+                  />
+                ) : (
+                  <View style={{ padding: 14, alignItems: 'center' }}>
+                    <TouchableOpacity
+                      style={[styles.wantedToggleBtnActiveGreen, { paddingVertical: 12, paddingHorizontal: 20 }]}
+                      onPress={() => Linking.openURL(`https://id.tradingview.com/chart/?symbol=IDX:${quote.symbol.replace('.JK', '')}`)}
+                    >
+                      <Text style={styles.wantedToggleTextActive}>Buka Chart Interaktif di TradingView.com ➔</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+
+              {/* Golden Cross / Death Cross Card */}
+              {quote.fiftyDayAverage && quote.twoHundredDayAverage && (
+                <View style={styles.cardContainer}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                    <Text style={{ fontSize: 20, marginRight: 8 }}>🌟</Text>
+                    <Text style={styles.sectionTitle}>Analisa MA50 vs MA200 (Golden Cross)</Text>
+                  </View>
+                  <View style={[
+                    styles.ratingBanner,
+                    {
+                      backgroundColor: quote.fiftyDayAverage >= quote.twoHundredDayAverage ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                      borderColor: quote.fiftyDayAverage >= quote.twoHundredDayAverage ? '#10B981' : '#EF4444',
+                    }
+                  ]}>
+                    <Text style={[
+                      styles.ratingBannerText,
+                      { color: quote.fiftyDayAverage >= quote.twoHundredDayAverage ? '#10B981' : '#EF4444' }
+                    ]}>
+                      {quote.fiftyDayAverage >= quote.twoHundredDayAverage 
+                        ? '🌟 GOLDEN CROSS AKTIF (MA50 > MA200) · Tren Bullish Kuat' 
+                        : '⚠️ DEATH CROSS REGIME (MA50 < MA200) · Waspada Koreksi'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.bandarStatsGrid}>
+                    <View style={styles.bandarStatBox}>
+                      <Text style={styles.bandarStatLabel}>MA50 (50 HARI)</Text>
+                      <Text style={[styles.bandarStatValue, { color: '#38BDF8' }]}>
+                        {formatRupiah(Math.round(quote.fiftyDayAverage))}
+                      </Text>
+                      <Text style={styles.bandarStatSub}>Jangka Menengah</Text>
+                    </View>
+                    <View style={styles.bandarStatBox}>
+                      <Text style={styles.bandarStatLabel}>MA200 (200 HARI)</Text>
+                      <Text style={[styles.bandarStatValue, { color: '#C084FC' }]}>
+                        {formatRupiah(Math.round(quote.twoHundredDayAverage))}
+                      </Text>
+                      <Text style={styles.bandarStatSub}>Jangka Panjang</Text>
+                    </View>
+                    <View style={styles.bandarStatBox}>
+                      <Text style={styles.bandarStatLabel}>HARGA SEKARANG</Text>
+                      <Text style={[styles.bandarStatValue, { color: (quote.regularMarketChangePercent || 0) >= 0 ? COLORS.success : COLORS.danger }]}>
+                        {formatRupiah(quote.regularMarketPrice)}
+                      </Text>
+                      <Text style={styles.bandarStatSub}>Penutupan Terakhir</Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {/* Volume Spike & Momentum Indicator */}
+              <View style={styles.cardContainer}>
+                <Text style={styles.sectionTitle}>📊 Analisa Volume & Volume Spread Analysis</Text>
+                <View style={styles.bandarStatsGrid}>
+                  <View style={styles.bandarStatBox}>
+                    <Text style={styles.bandarStatLabel}>Volume Hari Ini</Text>
+                    <Text style={styles.bandarStatValue}>{formatVolume(quote.regularMarketVolume || 0)}</Text>
+                    <Text style={styles.bandarStatSub}>Lembar Saham</Text>
+                  </View>
+                  <View style={styles.bandarStatBox}>
+                    <Text style={styles.bandarStatLabel}>Rasio Lonjakan Volume</Text>
+                    <Text style={[
+                      styles.bandarStatValue,
+                      { color: ((quote.regularMarketVolume || 0) / Math.max(1, quote.averageDailyVolume10Day || quote.regularMarketVolume || 1)) >= 1.5 ? '#F59E0B' : COLORS.text }
+                    ]}>
+                      {(((quote.regularMarketVolume || 0) / Math.max(1, quote.averageDailyVolume10Day || quote.regularMarketVolume || 1))).toFixed(1)}x
+                    </Text>
+                    <Text style={styles.bandarStatSub}>thdp Rata-rata 10D</Text>
+                  </View>
+                </View>
               </View>
             </View>
           )}
