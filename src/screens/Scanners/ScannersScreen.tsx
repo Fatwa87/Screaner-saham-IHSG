@@ -57,7 +57,8 @@ export default function ScannersScreen({ navigation }: any) {
     try {
       let res: AlgoResult[] = [];
       if (type === 'rekomendasiBesok') {
-        res = await runRekomendasiBesok(ALGO_UNIVERSES.rekomendasiBesok);
+        // Full universe scanning: All 935 listed companies in Bursa Efek Indonesia
+        res = await runRekomendasiBesok(ALGO_UNIVERSES.semua);
       } else if (type === 'ara') {
         // Full universe scanning: All 935 listed companies in Bursa Efek Indonesia
         res = await runAraHunter(ALGO_UNIVERSES.semua);
@@ -672,7 +673,7 @@ export default function ScannersScreen({ navigation }: any) {
           <Text style={styles.loadingText}>
             {activeTab === 'ara'
               ? 'Memindai seluruh 935 saham BEI & menghitung jarak ke harga ARA...'
-              : 'Menghitung skor multi-metode & rencana trading besok...'}
+              : 'Memindai seluruh 935 saham BEI & menyaring akumulasi terkuat besok...'}
           </Text>
         </View>
       ) : (
@@ -707,7 +708,52 @@ export default function ScannersScreen({ navigation }: any) {
               )}
             </View>
           ) : (
-            filteredResults.map((r, i) => renderItem(r, i))
+            <>
+              {/* Executive Conclusion Banner for Rekomendasi Besok */}
+              {activeTab === 'rekomendasiBesok' && filteredResults.length > 0 && !searchQuery && selectedFlowFilters.length === 0 && (
+                <View style={styles.conclusionCard}>
+                  <View style={styles.conclusionHeader}>
+                    <View style={styles.conclusionBadge}>
+                      <Text style={styles.conclusionBadgeText}>🌟 KESIMPULAN & STRATEGI BESOK</Text>
+                    </View>
+                    <Text style={styles.conclusionUniverseText}>935 Emiten BEI Dipindai</Text>
+                  </View>
+                  
+                  <Text style={styles.conclusionTitle}>
+                    Tersaring {results.length} Saham Terkurasi dengan Akumulasi Terkuat
+                  </Text>
+                  <Text style={styles.conclusionDesc}>
+                    Seluruh 935 emiten di Bursa Efek Indonesia telah dianalisa melalui filter likuiditas institusi (Turnover {'>'} Rp 500 Juta, Vol {'>'} 3.000 Lot), moving average (MA50/MA200), dan 8 pilar Order Flow.
+                  </Text>
+
+                  <View style={styles.conclusionGrid}>
+                    <View style={styles.conclusionBox}>
+                      <Text style={styles.conclusionBoxLabel}>🏆 TOP PICK #1 BESOK</Text>
+                      <Text style={styles.conclusionBoxValue}>{results[0]?.ticker || '-'}</Text>
+                      <Text style={styles.conclusionBoxSub}>
+                        Skor: {results[0]?.skor || 0}/100 · {results[0]?.pred || 'TOP PICK'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.conclusionBox}>
+                      <Text style={styles.conclusionBoxLabel}>⚖️ STRATEGI RISK/REWARD</Text>
+                      <Text style={styles.conclusionBoxValue}>Minimal 1 : 2.0</Text>
+                      <Text style={styles.conclusionBoxSub}>
+                        Patuh Fraksi BEI Resmi
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.conclusionTipRow}>
+                    <Text style={styles.conclusionTipText}>
+                      💡 <Text style={{ fontWeight: '800', color: '#38BDF8' }}>Panduan Eksekusi:</Text> Masuk pada Area Beli yang tertera pada kartu rekomendasi, pasang target profit bertahap di TP1 & TP2, dan disiplin pasang Stop Loss proteksi.
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {filteredResults.map((r, i) => renderItem(r, i))}
+            </>
           )}
           <View style={{ height: 40 }} />
         </ScrollView>
@@ -1337,5 +1383,101 @@ const styles = StyleSheet.create({
     fontSize: SIZES.font * 0.88,
     fontWeight: '800',
     letterSpacing: 0.3,
+  },
+
+  // 🌟 EXECUTIVE CONCLUSION CARD STYLES
+  conclusionCard: {
+    backgroundColor: '#0d1829',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: 'rgba(56, 189, 248, 0.35)',
+    shadowColor: '#0284C7',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  conclusionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  conclusionBadge: {
+    backgroundColor: 'rgba(2, 132, 199, 0.25)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#38BDF8',
+  },
+  conclusionBadgeText: {
+    color: '#38BDF8',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  conclusionUniverseText: {
+    color: '#94A3B8',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  conclusionTitle: {
+    color: '#F8FAFC',
+    fontSize: SIZES.font * 1.05,
+    fontWeight: '900',
+    marginBottom: 6,
+    lineHeight: 22,
+  },
+  conclusionDesc: {
+    color: '#94A3B8',
+    fontSize: SIZES.font * 0.78,
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  conclusionGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+  },
+  conclusionBox: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.07)',
+  },
+  conclusionBoxLabel: {
+    color: '#64748B',
+    fontSize: 9,
+    fontWeight: '800',
+    marginBottom: 4,
+    letterSpacing: 0.3,
+  },
+  conclusionBoxValue: {
+    color: '#38BDF8',
+    fontSize: SIZES.font * 1.05,
+    fontWeight: '900',
+    marginBottom: 2,
+  },
+  conclusionBoxSub: {
+    color: '#94A3B8',
+    fontSize: 9.5,
+    fontWeight: '600',
+  },
+  conclusionTipRow: {
+    backgroundColor: 'rgba(56, 189, 248, 0.08)',
+    borderRadius: 10,
+    padding: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: '#38BDF8',
+  },
+  conclusionTipText: {
+    color: '#BAE6FD',
+    fontSize: SIZES.font * 0.74,
+    lineHeight: 16,
   },
 });

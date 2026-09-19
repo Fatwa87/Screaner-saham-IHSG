@@ -660,7 +660,7 @@ export const runRecehScanner = async (tickers: string[]): Promise<AlgoResult[]> 
   return results.sort((a, b) => b.skor - a.skor);
 };
 
-// 6. Rekomendasi Saham Besok (Multi-Method High Conviction Quant Analysis)
+// 6. Rekomendasi Saham Besok (Multi-Method High Conviction Quant Analysis - 935 Saham BEI)
 export const runRekomendasiBesok = async (tickers: string[]): Promise<AlgoResult[]> => {
   const quotes = await fetchQuotes(tickers);
   const results: AlgoResult[] = [];
@@ -677,12 +677,22 @@ export const runRekomendasiBesok = async (tickers: string[]): Promise<AlgoResult
     const vol = q.regularMarketVolume || 0;
     const avgVol = q.averageDailyVolume10Day || q.averageDailyVolume3Month || 100000;
     const ma50 = q.fiftyDayAverage || 0;
+    const ma200 = q.twoHundredDayAverage || 0;
+    const turnover = price * vol;
+
+    // 1. FILTER LIKUIDITAS & KELAYAKAN BURSA (Strict Institutional Screening)
+    // Mengeliminasi saham tidur/illiquid, saham FCA gocap < 50, dan yang tanpa transaksi aktif
+    if (price < 50) continue;
+    if (vol < 300000) continue; // Minimal 3.000 lot (300.000 lembar) transaksi harian
+    if (turnover < 500000000) continue; // Minimal Rp 500 Juta turnover per hari untuk mencegah likuiditas kering
+    if (chgPct < -3.0 || chgPct > 24.0) continue; // Hindari saham longsor/ARB atau yang sudah lewat fase entri
 
     const volSpike = avgVol > 0 ? vol / avgVol : 1;
     const bullPower = (high - low > 0) ? (price - low) / (high - low) : 0.5;
-    const isAboveMa = (ma50 > 0 && price >= ma50);
+    const isAboveMa50 = (ma50 > 0 && price >= ma50);
+    const isAboveMa200 = (ma200 > 0 && price >= ma200);
     
-    // Evaluate the 8 Order Flow & Bandarmology criteria
+    // Evaluasi 8 Kriteria Order Flow & Jejak Bandar
     const orderflowTags = computeOrderflowTags(ticker, q, volSpike, bullPower);
     const matchedCount = orderflowTags.length;
 
@@ -694,16 +704,18 @@ export const runRekomendasiBesok = async (tickers: string[]): Promise<AlgoResult
 
     // 2. Volume & Liquidity surge (Up to 20 pts)
     if (volSpike >= 2.0) skor += 20;
-    else if (volSpike >= 1.3) skor += 12;
-    else if (volSpike >= 0.9) skor += 6;
+    else if (volSpike >= 1.3) skor += 14;
+    else if (volSpike >= 0.9) skor += 8;
 
-    // 3. Technical Strength (Up to 25 pts)
-    if (isAboveMa) skor += 10;
+    // 3. Technical Trend & Moving Average Strength (Up to 25 pts)
+    if (isAboveMa50) skor += 10;
+    if (isAboveMa200) skor += 5;
     if (bullPower >= 0.75) skor += 10;
     else if (bullPower >= 0.50) skor += 5;
-    if (chgPct >= 0.5 && chgPct <= 18.0) skor += 5;
+    if (chgPct >= 0.5 && chgPct <= 15.0) skor += 5;
 
-    // 4. Special Momentum & ARA bonus
+    // 4. Special Momentum & Liquidity bonus (Up to 15 pts)
+    if (turnover >= 5000000000) skor += 5; // > Rp 5 Miliar turnover: bonus likuiditas institusi
     if (orderflowTags.includes('close_high') && orderflowTags.includes('offers_slender')) {
       skor += 5;
     }
@@ -711,7 +723,10 @@ export const runRekomendasiBesok = async (tickers: string[]): Promise<AlgoResult
       skor += 5;
     }
 
-    skor = Math.min(99, Math.max(50, skor));
+    skor = Math.min(99, Math.max(45, skor));
+
+    // FILTER KEYAKINAN MINIMAL: Hanya lolos jika skor >= 68 (High Conviction Institutional Setup)
+    if (skor < 68) continue;
 
     // Calculate Precision Trading Plan for Tomorrow using Official IDX Tick Rules
     const plan = calculateIdxTradingPlan(price, 0.05, 0.10, 0.035);
@@ -770,10 +785,12 @@ export const runRekomendasiBesok = async (tickers: string[]): Promise<AlgoResult
       tp1PctActual,
       tp2PctActual,
       slPctActual,
+      turnoverIdr: turnover,
     });
   }
 
-  // Sort by highest score, then by matched orderflow tags count
-  return results.sort((a, b) => b.skor - a.skor || (b.matchedCount || 0) - (a.matchedCount || 0));
+  // Urutkan berdasarkan skor tertinggi, lalu kurasi Top 15 Rekomendasi Terpilih untuk Besok
+  const sorted = results.sort((a, b) => b.skor - a.skor || (b.matchedCount || 0) - (a.matchedCount || 0));
+  return sorted.slice(0, 15);
 };
 

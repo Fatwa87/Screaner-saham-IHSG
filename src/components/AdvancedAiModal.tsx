@@ -31,7 +31,7 @@ interface AdvancedAiModalProps {
   onNavigateAnalysis?: (ticker: string) => void;
 }
 
-type SubTab = 'aiScore' | 'sentiment' | 'fundamentals' | 'tradingView' | 'seasonality';
+type SubTab = 'aiScore' | 'smartMoney' | 'sentiment' | 'fundamentals' | 'tradingView' | 'seasonality';
 
 export default function AdvancedAiModal({
   visible,
@@ -245,11 +245,20 @@ export default function AdvancedAiModal({
               </TouchableOpacity>
 
               <TouchableOpacity
+                style={[styles.tabBtn, activeTab === 'smartMoney' && styles.tabBtnActive]}
+                onPress={() => setActiveTab('smartMoney')}
+              >
+                <Text style={[styles.tabBtnText, activeTab === 'smartMoney' && styles.tabBtnTextActive]}>
+                  🐳 2. Smart Money & Bandar
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
                 style={[styles.tabBtn, activeTab === 'sentiment' && styles.tabBtnActive]}
                 onPress={() => setActiveTab('sentiment')}
               >
                 <Text style={[styles.tabBtnText, activeTab === 'sentiment' && styles.tabBtnTextActive]}>
-                  📰 2. Sentimen Berita
+                  📰 3. Sentimen Berita
                 </Text>
               </TouchableOpacity>
 
@@ -258,7 +267,7 @@ export default function AdvancedAiModal({
                 onPress={() => setActiveTab('fundamentals')}
               >
                 <Text style={[styles.tabBtnText, activeTab === 'fundamentals' && styles.tabBtnTextActive]}>
-                  📊 3. Rasio Finansial
+                  📊 4. Rasio Finansial
                 </Text>
               </TouchableOpacity>
 
@@ -267,7 +276,7 @@ export default function AdvancedAiModal({
                 onPress={() => setActiveTab('tradingView')}
               >
                 <Text style={[styles.tabBtnText, activeTab === 'tradingView' && styles.tabBtnTextActive]}>
-                  📈 4. Chart TradingView
+                  📈 5. Chart TradingView
                 </Text>
               </TouchableOpacity>
 
@@ -276,7 +285,7 @@ export default function AdvancedAiModal({
                 onPress={() => setActiveTab('seasonality')}
               >
                 <Text style={[styles.tabBtnText, activeTab === 'seasonality' && styles.tabBtnTextActive]}>
-                  📅 5. Pola Musiman (5 Thn)
+                  📅 6. Pola Musiman (5 Thn)
                 </Text>
               </TouchableOpacity>
             </ScrollView>
@@ -356,6 +365,130 @@ export default function AdvancedAiModal({
                     </Text>
                   </View>
 
+                  {/* 🎯 TRADING PLAN PRESISI RESMI FRAKSI BEI */}
+                  {ai?.trading_plan_presisi && (
+                    <View style={styles.cardBox}>
+                      <View style={styles.cardBoxHeader}>
+                        <Text style={styles.cardBoxIcon}>🎯</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.cardBoxTitle}>Trading Plan Presisi Fraksi BEI</Text>
+                          <Text style={styles.cardBoxSubtitle}>
+                            {ai.trading_plan_presisi.catatan_fraksi_bei}
+                          </Text>
+                        </View>
+                        <View style={styles.rrrBadge}>
+                          <Text style={styles.rrrBadgeText}>RRR {ai.trading_plan_presisi.risk_reward_ratio}</Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.tradingPlanGrid}>
+                        <View style={styles.planCol}>
+                          <Text style={styles.planColLabel}>AREA BELI 1 (BEST)</Text>
+                          <Text style={styles.planColValGreen}>
+                            Rp {formatRupiah(ai.trading_plan_presisi.area_beli_1)}
+                          </Text>
+                          <Text style={styles.planColSub}>Pullback / Support</Text>
+                        </View>
+                        <View style={styles.planCol}>
+                          <Text style={styles.planColLabel}>AREA BELI 2</Text>
+                          <Text style={styles.planColValBlue}>
+                            Rp {formatRupiah(ai.trading_plan_presisi.area_beli_2)}
+                          </Text>
+                          <Text style={styles.planColSub}>Entry Agresif</Text>
+                        </View>
+                      </View>
+
+                      <View style={[styles.tradingPlanGrid, { marginTop: 8 }]}>
+                        <View style={styles.planCol}>
+                          <Text style={styles.planColLabel}>TARGET PROFIT 1</Text>
+                          <Text style={styles.planColValGreen}>
+                            Rp {formatRupiah(ai.trading_plan_presisi.target_profit_1)}
+                          </Text>
+                          <Text style={styles.planColSub}>TP Konservatif</Text>
+                        </View>
+                        <View style={styles.planCol}>
+                          <Text style={styles.planColLabel}>TARGET PROFIT 2</Text>
+                          <Text style={styles.planColValGreen}>
+                            Rp {formatRupiah(ai.trading_plan_presisi.target_profit_2)}
+                          </Text>
+                          <Text style={styles.planColSub}>TP Maksimal</Text>
+                        </View>
+                        <View style={styles.planCol}>
+                          <Text style={styles.planColLabel}>STOP LOSS (SL)</Text>
+                          <Text style={styles.planColValRed}>
+                            Rp {formatRupiah(ai.trading_plan_presisi.stop_loss)}
+                          </Text>
+                          <Text style={styles.planColSub}>Proteksi Ketat</Text>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* 💎 VALUASI FAIR VALUE & MARGIN OF SAFETY */}
+                  {ai?.valuasi_fair_value && (
+                    <View style={styles.cardBox}>
+                      <View style={styles.cardBoxHeader}>
+                        <Text style={styles.cardBoxIcon}>💎</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.cardBoxTitle}>Target Nilai Wajar & Margin of Safety</Text>
+                          <Text style={styles.cardBoxSubtitle}>Metode DCF & PE Multiplier Historis</Text>
+                        </View>
+                        <View style={[styles.mosBadge, { backgroundColor: ai.valuasi_fair_value.margin_of_safety_pct >= 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)' }]}>
+                          <Text style={[styles.mosBadgeText, { color: ai.valuasi_fair_value.margin_of_safety_pct >= 0 ? '#34D399' : '#F87171' }]}>
+                            MoS: {ai.valuasi_fair_value.margin_of_safety_pct > 0 ? '+' : ''}{ai.valuasi_fair_value.margin_of_safety_pct}%
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.fairValRow}>
+                        <View style={styles.fairValBox}>
+                          <Text style={styles.fairValLabel}>ESTIMASI NILAI WAJAR</Text>
+                          <Text style={styles.fairValNumber}>
+                            Rp {formatRupiah(ai.valuasi_fair_value.nilai_wajar_dcf)}
+                          </Text>
+                          <Text style={styles.fairValSub}>
+                            Status: <Text style={{ color: '#38BDF8', fontWeight: '800' }}>{ai.valuasi_fair_value.status_valuasi}</Text>
+                          </Text>
+                        </View>
+
+                        <View style={styles.fairValBox}>
+                          <Text style={styles.fairValLabel}>PIOTROSKI F-SCORE</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
+                            <Text style={styles.fairValScoreNumber}>{ai.valuasi_fair_value.piotroski_f_score}</Text>
+                            <Text style={{ color: '#94A3B8', fontSize: 13, fontWeight: '700' }}>/9</Text>
+                          </View>
+                          <Text style={styles.fairValSub}>
+                            Neraca: <Text style={{ color: '#34D399', fontWeight: '800' }}>{ai.valuasi_fair_value.altman_z_status}</Text>
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* ⚠️ SKENARIO BULLISH & LEVEL INVALIDASI */}
+                  {ai?.skenario_bullish_bearish && (
+                    <View style={styles.cardBox}>
+                      <View style={styles.cardBoxHeader}>
+                        <Text style={styles.cardBoxIcon}>⚠️</Text>
+                        <Text style={styles.cardBoxTitle}>Skenario Bullish vs Titik Invalidasi</Text>
+                      </View>
+
+                      <Text style={styles.invalidationWarningTitle}>🛑 KAPAN SKENARIO INI BATAL?</Text>
+                      <Text style={styles.invalidationWarningText}>
+                        {ai.skenario_bullish_bearish.skenario_pembatalan}
+                      </Text>
+
+                      <View style={styles.catalystPillsWrap}>
+                        {ai.skenario_bullish_bearish.katalis_bullish?.map((kat: string, kIdx: number) => (
+                          <View key={kIdx} style={styles.catalystPillItem}>
+                            <Text style={styles.catalystPillBullet}>⚡</Text>
+                            <Text style={styles.catalystPillContent}>{kat}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
                   {/* Quick Summary Grid */}
                   <View style={styles.cardBox}>
                     <Text style={styles.cardBoxTitle}>📌 Ringkasan 5 Faktor Penentu</Text>
@@ -383,7 +516,77 @@ export default function AdvancedAiModal({
                 </View>
               )}
 
-              {/* TAB 2: SENTIMEN BERITA */}
+              {/* TAB 2: BANDARMOLOGI & SMART MONEY FLOW */}
+              {activeTab === 'smartMoney' && (
+                <View style={styles.sectionContainer}>
+                  {/* Smart Money Hero Card */}
+                  <View style={styles.smartHeroCard}>
+                    <View style={styles.smartHeroHeader}>
+                      <View>
+                        <Text style={styles.heroSub}>STATUS AKUMULASI BANDAR</Text>
+                        <Text style={styles.smartHeroTitle}>
+                          {ai?.analisa_bandarmologi?.status_akumulasi || 'BIG ACCUMULATION'}
+                        </Text>
+                      </View>
+                      <View style={styles.smartWhaleBadge}>
+                        <Text style={styles.smartWhaleEmoji}>🐳</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.smartFlowLabel}>
+                      {ai?.analisa_bandarmologi?.label_flow || 'Smart Money & Whale Inflow Terdeteksi'}
+                    </Text>
+                  </View>
+
+                  {/* 4 Pillars of Bandarmology */}
+                  <View style={styles.smartGrid}>
+                    <View style={styles.smartGridCard}>
+                      <Text style={styles.smartGridLabel}>KONSENTRASI BROKER</Text>
+                      <Text style={styles.smartGridValBlue}>Top 3 Buyer Dominan</Text>
+                      <Text style={styles.smartGridDesc}>
+                        {ai?.analisa_bandarmologi?.konsentrasi_top_broker || 'Konsentrasi volume beli terakumulasi'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.smartGridCard}>
+                      <Text style={styles.smartGridLabel}>ARUS DANA ASING (FOREIGN)</Text>
+                      <Text style={styles.smartGridValGreen}>
+                        {ai?.analisa_bandarmologi?.net_foreign_flow?.split(' ')[0] || '+Inflow'}
+                      </Text>
+                      <Text style={styles.smartGridDesc}>
+                        {ai?.analisa_bandarmologi?.net_foreign_flow || 'Inflow Asing Aktif'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.smartGridCard}>
+                      <Text style={styles.smartGridLabel}>VOLUME SPREAD ANALYSIS (VSA)</Text>
+                      <Text style={styles.smartGridValPurple}>Spread & Volume</Text>
+                      <Text style={styles.smartGridDesc}>
+                        {ai?.analisa_bandarmologi?.vsa_volume_spread || 'Stopping Volume di Area Support'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.smartGridCard}>
+                      <Text style={styles.smartGridLabel}>PARTISIPASI PEMAIN</Text>
+                      <Text style={styles.smartGridValYellow}>Smart vs Retail</Text>
+                      <Text style={styles.smartGridDesc}>
+                        {ai?.analisa_bandarmologi?.smart_money_participation || 'Institusi 70% · Ritel 30%'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Bandarmology Explanation Card */}
+                  <View style={styles.cardBox}>
+                    <Text style={styles.cardBoxTitle}>💡 Cara Membaca Sinyal Bandar</Text>
+                    <Text style={styles.bandarGuideText}>
+                      • <Text style={{ fontWeight: '800', color: '#38BDF8' }}>Akumulasi Tersembunyi:</Text> Terjadi ketika broker top buyer menampung volume di area harga support tanpa membuat harga melonjak drastis.{'\n\n'}
+                      • <Text style={{ fontWeight: '800', color: '#34D399' }}>Volume Spread Sehat:</Text> Kenaikan harga yang disertai pembesaran volume menandakan partisipasi institusi asli, bukan manipulasi ritel.{'\n\n'}
+                      • <Text style={{ fontWeight: '800', color: '#F87171' }}>Waspada Distribusi:</Text> Jika harga naik tinggi tapi top seller mulai mendominasi penjualan masif, segera amankan profit secara bertahap.
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {/* TAB 3: SENTIMEN BERITA */}
               {activeTab === 'sentiment' && (
                 <View style={styles.sectionContainer}>
                   {/* Sentiment Gauge Hero */}
@@ -1656,5 +1859,255 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+
+  // 🎯 TRADING PLAN STYLES
+  rrrBadge: {
+    backgroundColor: 'rgba(56, 189, 248, 0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#38BDF8',
+  },
+  rrrBadgeText: {
+    color: '#38BDF8',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  cardBoxSubtitle: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  tradingPlanGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  planCol: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  planColLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#64748B',
+    marginBottom: 4,
+  },
+  planColValGreen: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#34D399',
+  },
+  planColValBlue: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#38BDF8',
+  },
+  planColValRed: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#F87171',
+  },
+  planColSub: {
+    fontSize: 9.5,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+
+  // 💎 FAIR VALUE & MOS STYLES
+  mosBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  mosBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  fairValRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  fairValBox: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  fairValLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#64748B',
+    marginBottom: 4,
+  },
+  fairValNumber: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#38BDF8',
+  },
+  fairValScoreNumber: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#34D399',
+  },
+  fairValSub: {
+    fontSize: 10.5,
+    color: '#94A3B8',
+    marginTop: 4,
+  },
+
+  // ⚠️ INVALIDATION & SCENARIO STYLES
+  invalidationWarningTitle: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#F87171',
+    marginTop: 8,
+    letterSpacing: 0.5,
+  },
+  invalidationWarningText: {
+    fontSize: 12,
+    color: '#FECDD3',
+    lineHeight: 18,
+    marginTop: 4,
+    backgroundColor: 'rgba(244, 63, 94, 0.1)',
+    padding: 10,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#F43F5E',
+  },
+  catalystPillsWrap: {
+    marginTop: 10,
+    gap: 6,
+  },
+  catalystPillItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#0F172A',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  catalystPillBullet: {
+    fontSize: 12,
+  },
+  catalystPillContent: {
+    fontSize: 11.5,
+    color: '#E2E8F0',
+    fontWeight: '600',
+    flex: 1,
+  },
+
+  // 🐳 BANDARMOLOGI & SMART MONEY STYLES
+  smartHeroCard: {
+    backgroundColor: '#0f172a',
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1.5,
+    borderColor: 'rgba(168, 85, 247, 0.4)',
+    shadowColor: '#A855F7',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 4,
+    marginBottom: 14,
+  },
+  smartHeroHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  smartHeroTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#E9D5FF',
+    marginTop: 2,
+  },
+  smartWhaleBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(168, 85, 247, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#A855F7',
+  },
+  smartWhaleEmoji: {
+    fontSize: 22,
+  },
+  smartFlowLabel: {
+    fontSize: 12,
+    color: '#C084FC',
+    marginTop: 8,
+    fontWeight: '700',
+  },
+  smartGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 14,
+  },
+  smartGridCard: {
+    width: '48%',
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  smartGridLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#64748B',
+    marginBottom: 4,
+  },
+  smartGridValBlue: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#38BDF8',
+    marginBottom: 4,
+  },
+  smartGridValGreen: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#34D399',
+    marginBottom: 4,
+  },
+  smartGridValPurple: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#C084FC',
+    marginBottom: 4,
+  },
+  smartGridValYellow: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#FBBF24',
+    marginBottom: 4,
+  },
+  smartGridDesc: {
+    fontSize: 10.5,
+    color: '#CBD5E1',
+    lineHeight: 15,
+  },
+  bandarGuideText: {
+    fontSize: 12,
+    color: '#CBD5E1',
+    lineHeight: 18,
+    marginTop: 6,
   },
 });
