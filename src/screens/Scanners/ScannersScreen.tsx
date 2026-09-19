@@ -477,8 +477,20 @@ export default function ScannersScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      {/* 1. FOCUS SCREENER TABS: Rekomendasi Besok & ARA Hunter Pro */}
-      <View style={styles.tabsContainer}>
+      <ScrollView
+        style={styles.mainScrollView}
+        contentContainerStyle={styles.mainScrollContent}
+        showsVerticalScrollIndicator={true}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={() => executeScan(activeTab)}
+            tintColor={COLORS.primary}
+          />
+        }
+      >
+        {/* 1. FOCUS SCREENER TABS: Rekomendasi Besok & ARA Hunter Pro */}
+        <View style={styles.tabsContainer}>
         <View style={styles.mainTabsGrid}>
           {renderTab(
             'rekomendasiBesok', 
@@ -677,16 +689,7 @@ export default function ScannersScreen({ navigation }: any) {
           </Text>
         </View>
       ) : (
-        <ScrollView
-          style={styles.resultsContainer}
-          refreshControl={
-            <RefreshControl
-              refreshing={loading}
-              onRefresh={() => executeScan(activeTab)}
-              tintColor={COLORS.primary}
-            />
-          }
-        >
+        <View style={styles.resultsWrapper}>
           {filteredResults.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyEmoji}>🔍</Text>
@@ -755,9 +758,11 @@ export default function ScannersScreen({ navigation }: any) {
               {filteredResults.map((r, i) => renderItem(r, i))}
             </>
           )}
-          <View style={{ height: 40 }} />
-        </ScrollView>
+        </View>
       )}
+
+        <View style={{ height: 60 }} />
+      </ScrollView>
 
       {/* Advanced AI Gemini Analysis Modal */}
       {selectedAiStock && (
@@ -779,6 +784,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  mainScrollView: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  mainScrollContent: {
+    flexGrow: 1,
+  },
+  resultsWrapper: {
+    padding: SIZES.padding,
   },
   tabsContainer: {
     paddingVertical: 12,
