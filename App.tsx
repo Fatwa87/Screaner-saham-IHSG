@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Analytics } from '@vercel/analytics/react';
 import AppNavigator from './src/navigation/AppNavigator';
 
 export default function App() {
@@ -56,6 +57,7 @@ export default function App() {
     <SafeAreaProvider>
       <StatusBar style="light" />
       <AppNavigator />
+      <Analytics />
     </SafeAreaProvider>
   );
 }
